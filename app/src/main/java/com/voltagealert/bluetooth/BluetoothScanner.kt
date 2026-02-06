@@ -1,13 +1,17 @@
 package com.voltagealert.bluetooth
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.ParcelUuid
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +42,34 @@ class BluetoothScanner(private val context: Context) {
     val scanError: StateFlow<String?> = _scanError.asStateFlow()
 
     private val deviceMap = mutableMapOf<String, ScannedDevice>()
+    private var isClassicScanActive = false
+
+    // BroadcastReceiver for Classic Bluetooth discovery
+    private val classicDiscoveryReceiver = object : BroadcastReceiver() {
+        @SuppressLint("MissingPermission")
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                BluetoothDevice.ACTION_FOUND -> {
+                    val device: BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    val rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE).toInt()
+
+                    device?.let {
+                        val name = it.name
+                        Log.d(TAG, "Classic BT Device found: $name (${it.address}) RSSI: $rssi")
+
+                        // Add to discovered devices
+                        val scannedDevice = ScannedDevice(it, name, rssi, null)
+                        deviceMap[it.address] = scannedDevice
+                        _discoveredDevices.value = deviceMap.values.sortedByDescending { it.rssi }
+                    }
+                }
+                BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                    Log.d(TAG, "Classic BT discovery finished")
+                    isClassicScanActive = false
+                }
+            }
+        }
+    }
 
     companion object {
         private const val TAG = "BluetoothScanner"
@@ -106,7 +138,7 @@ class BluetoothScanner(private val context: Context) {
             return
         }
 
-        if (_isScanning.value) {
+        if (_isScanning.value || isClassicScanActive) {
             Log.w(TAG, "Scan already in progress")
             return
         }
@@ -114,36 +146,66 @@ class BluetoothScanner(private val context: Context) {
         deviceMap.clear()
         _discoveredDevices.value = emptyList()
         _scanError.value = null
-
-        // Build scan filters
-        // Use device name filter for ST940I-UP voltage sensor
-        val filters = mutableListOf<ScanFilter>()
-
-        // Filter by device name (ST940I-UP)
-        filters.add(
-            ScanFilter.Builder()
-                .setDeviceName("ST940I-UP")
-                .build()
-        )
-
-        // Scan settings - balanced mode for good battery/performance
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-            .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
-            .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
-            .build()
+        _isScanning.value = true
 
         try {
-            Log.d(TAG, "Starting BLE scan with ${filters.size} filters")
-            bleScanner?.startScan(filters, settings, scanCallback)
-            _isScanning.value = true
+            // First, check already bonded/paired devices
+            val bondedDevices = bluetoothAdapter.bondedDevices
+            Log.d(TAG, "Checking ${bondedDevices.size} bonded devices")
+
+            bondedDevices.forEach { device ->
+                val name = device.name
+                Log.d(TAG, "Bonded device: $name (${device.address})")
+
+                // Check if it's our voltage sensor
+                if (name != null && DEVICE_NAME_PREFIXES.any { name.contains(it, ignoreCase = true) }) {
+                    Log.d(TAG, "Found paired voltage sensor: $name")
+                    val scannedDevice = ScannedDevice(device, name, -50, null) // Use default RSSI
+                    deviceMap[device.address] = scannedDevice
+                }
+            }
+
+            // If we found paired devices, use them immediately
+            if (deviceMap.isNotEmpty()) {
+                _discoveredDevices.value = deviceMap.values.sortedByDescending { it.rssi }
+                _isScanning.value = false
+                Log.d(TAG, "Using ${deviceMap.size} paired device(s)")
+                return
+            }
+
+            // If no paired devices found, start discovery
+            Log.d(TAG, "No paired voltage sensors found, starting discovery")
+
+            // Register receiver for Classic Bluetooth discovery
+            val filter = IntentFilter().apply {
+                addAction(BluetoothDevice.ACTION_FOUND)
+                addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+            }
+            context.registerReceiver(classicDiscoveryReceiver, filter)
+
+            // Start Classic Bluetooth discovery (for ST940I-UP)
+            if (bluetoothAdapter.isDiscovering) {
+                bluetoothAdapter.cancelDiscovery()
+            }
+
+            val discoveryStarted = bluetoothAdapter.startDiscovery()
+            if (discoveryStarted) {
+                isClassicScanActive = true
+                Log.d(TAG, "Started Classic Bluetooth discovery")
+            } else {
+                Log.e(TAG, "Failed to start Classic Bluetooth discovery")
+                _scanError.value = "Failed to start Bluetooth discovery"
+                _isScanning.value = false
+            }
+
         } catch (e: SecurityException) {
             Log.e(TAG, "Missing Bluetooth permissions", e)
             _scanError.value = "Missing Bluetooth permissions"
+            _isScanning.value = false
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start scan", e)
             _scanError.value = "Failed to start scan: ${e.message}"
+            _isScanning.value = false
         }
     }
 
@@ -152,12 +214,24 @@ class BluetoothScanner(private val context: Context) {
      */
     @SuppressLint("MissingPermission")
     fun stopScan() {
-        if (!_isScanning.value) {
+        if (!_isScanning.value && !isClassicScanActive) {
             return
         }
 
         try {
-            bleScanner?.stopScan(scanCallback)
+            // Stop Classic Bluetooth discovery
+            if (isClassicScanActive) {
+                bluetoothAdapter.cancelDiscovery()
+                isClassicScanActive = false
+            }
+
+            // Unregister receiver
+            try {
+                context.unregisterReceiver(classicDiscoveryReceiver)
+            } catch (e: IllegalArgumentException) {
+                // Receiver not registered, ignore
+            }
+
             _isScanning.value = false
             Log.d(TAG, "Scan stopped")
         } catch (e: SecurityException) {
