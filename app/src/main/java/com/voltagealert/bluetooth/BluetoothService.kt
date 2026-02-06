@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Binder
 import android.os.IBinder
 import android.util.Log
@@ -47,6 +48,7 @@ class BluetoothService : Service() {
     private var scanner: BluetoothScanner? = null
     private var scanJob: Job? = null
     private var isClassicBluetooth = false
+    private var pairingReceiver: PairingRequestReceiver? = null
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -81,6 +83,37 @@ class BluetoothService : Service() {
         Log.d(TAG, "Service created")
         createNotificationChannel()
         scanner = BluetoothScanner(this)
+        registerPairingReceiver()
+    }
+
+    /**
+     * Register broadcast receiver to handle pairing requests.
+     */
+    private fun registerPairingReceiver() {
+        pairingReceiver = PairingRequestReceiver()
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_PAIRING_REQUEST)
+            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+            // Set high priority to intercept before system dialogs
+            priority = IntentFilter.SYSTEM_HIGH_PRIORITY
+        }
+        registerReceiver(pairingReceiver, filter)
+        Log.d(TAG, "Pairing receiver registered")
+    }
+
+    /**
+     * Unregister pairing receiver.
+     */
+    private fun unregisterPairingReceiver() {
+        pairingReceiver?.let {
+            try {
+                unregisterReceiver(it)
+                pairingReceiver = null
+                Log.d(TAG, "Pairing receiver unregistered")
+            } catch (e: IllegalArgumentException) {
+                // Already unregistered, ignore
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -111,6 +144,41 @@ class BluetoothService : Service() {
                 Log.d(TAG, "Device type: ${device.type}, using ${if (isClassicBluetooth) "Classic BT" else "BLE"}")
 
                 if (isClassicBluetooth) {
+                    // For Classic Bluetooth, ensure device is paired first
+                    if (device.bondState != BluetoothDevice.BOND_BONDED) {
+                        Log.d(TAG, "Device not bonded, attempting legacy pairing...")
+
+                        // Try legacy PIN-based pairing
+                        val pairingStarted = LegacyPairingHelper.attemptLegacyPairing(device)
+
+                        if (pairingStarted) {
+                            Log.d(TAG, "Pairing initiated, waiting for bond...")
+                            // Wait for pairing to complete (PairingRequestReceiver will handle it)
+
+                            // Wait up to 30 seconds for pairing
+                            var waitTime = 0
+                            while (device.bondState != BluetoothDevice.BOND_BONDED && waitTime < 30000) {
+                                delay(1000)
+                                waitTime += 1000
+
+                                if (device.bondState == BluetoothDevice.BOND_NONE) {
+                                    Log.w(TAG, "Pairing failed or cancelled")
+                                    break
+                                }
+                            }
+
+                            if (device.bondState != BluetoothDevice.BOND_BONDED) {
+                                throw Exception("Failed to pair with device after 30 seconds")
+                            }
+
+                            Log.d(TAG, "Device successfully paired!")
+                        } else {
+                            throw Exception("Failed to initiate pairing")
+                        }
+                    } else {
+                        Log.d(TAG, "Device already bonded")
+                    }
+
                     // Use Classic Bluetooth (SPP)
                     classicBtManager = ClassicBluetoothManager(
                         onReadingReceived = { reading ->
@@ -312,6 +380,7 @@ class BluetoothService : Service() {
                 bleManager?.disconnect()?.suspend()
             }
         }
+        unregisterPairingReceiver()
         Log.d(TAG, "Service destroyed")
     }
 
