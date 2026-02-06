@@ -16,10 +16,12 @@ object LegacyPairingHelper {
 
     // Common PIN codes for industrial/medical Bluetooth devices
     private val COMMON_PINS = listOf(
-        "0000",  // Most common default
-        "1234",  // Second most common
+        "1234",  // Most common (ESP32 default in examples)
+        "9527",  // ESP32 Espressif official AT command example
+        "0000",  // Generic Bluetooth default
         "1111",  // Common for industrial devices
         "0001",  // Sometimes used
+        "",      // Empty PIN (some ESP32 devices)
         "123456" // Extended PIN
     )
 
