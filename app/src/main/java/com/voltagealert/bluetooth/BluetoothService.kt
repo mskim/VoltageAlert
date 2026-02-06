@@ -1,5 +1,6 @@
 package com.voltagealert.bluetooth
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -40,10 +41,12 @@ class BluetoothService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
 
     private var bleManager: SensorBleManager? = null
+    private var classicBtManager: ClassicBluetoothManager? = null
     private var mockJob: Job? = null
     private var useMockMode = false
     private var scanner: BluetoothScanner? = null
     private var scanJob: Job? = null
+    private var isClassicBluetooth = false
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -92,34 +95,65 @@ class BluetoothService : Service() {
     /**
      * Connect to a Bluetooth device.
      */
+    @SuppressLint("MissingPermission")
     fun connect(device: BluetoothDevice) {
         serviceScope.launch {
             try {
                 _connectionStatus.value = ConnectionStatus.CONNECTING
 
-                bleManager = SensorBleManager(
-                    context = this@BluetoothService,
-                    onReadingReceived = { reading ->
-                        _latestReading.value = reading
-                        _errorCount.value = 0  // Reset error count on successful reading
-                    },
-                    onConnectionStatusChanged = { status ->
-                        _connectionStatus.value = status
-                        updateNotification(status)
-                    },
-                    onError = {
-                        _errorCount.value = _errorCount.value + 1
-                    }
-                )
+                // Determine if device is Classic Bluetooth or BLE
+                // Classic BT devices have device.type == DEVICE_TYPE_CLASSIC (1)
+                // BLE devices have device.type == DEVICE_TYPE_LE (2)
+                // Dual mode devices have device.type == DEVICE_TYPE_DUAL (3)
+                isClassicBluetooth = device.type == BluetoothDevice.DEVICE_TYPE_CLASSIC ||
+                                     device.type == BluetoothDevice.DEVICE_TYPE_DUAL
 
-                bleManager?.connect(device)
-                    ?.useAutoConnect(true)
-                    ?.retry(3, 100)
-                    ?.timeout(10000)
-                    ?.suspend()
+                Log.d(TAG, "Device type: ${device.type}, using ${if (isClassicBluetooth) "Classic BT" else "BLE"}")
 
-                Log.d(TAG, "Connected to device: ${device.address}")
-                _connectionStatus.value = ConnectionStatus.CONNECTED
+                if (isClassicBluetooth) {
+                    // Use Classic Bluetooth (SPP)
+                    classicBtManager = ClassicBluetoothManager(
+                        onReadingReceived = { reading ->
+                            _latestReading.value = reading
+                            _errorCount.value = 0
+                        },
+                        onConnectionStatusChanged = { status ->
+                            _connectionStatus.value = status
+                            updateNotification(status)
+                        },
+                        onError = {
+                            _errorCount.value = _errorCount.value + 1
+                        }
+                    )
+
+                    classicBtManager?.connect(device)
+                    Log.d(TAG, "Connecting via Classic Bluetooth: ${device.address}")
+
+                } else {
+                    // Use BLE (GATT)
+                    bleManager = SensorBleManager(
+                        context = this@BluetoothService,
+                        onReadingReceived = { reading ->
+                            _latestReading.value = reading
+                            _errorCount.value = 0
+                        },
+                        onConnectionStatusChanged = { status ->
+                            _connectionStatus.value = status
+                            updateNotification(status)
+                        },
+                        onError = {
+                            _errorCount.value = _errorCount.value + 1
+                        }
+                    )
+
+                    bleManager?.connect(device)
+                        ?.useAutoConnect(true)
+                        ?.retry(3, 100)
+                        ?.timeout(10000)
+                        ?.suspend()
+
+                    Log.d(TAG, "Connected via BLE: ${device.address}")
+                }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Connection failed", e)
@@ -140,8 +174,13 @@ class BluetoothService : Service() {
      */
     fun disconnect() {
         serviceScope.launch {
-            bleManager?.disconnect()?.suspend()
-            bleManager = null
+            if (isClassicBluetooth) {
+                classicBtManager?.disconnect()
+                classicBtManager = null
+            } else {
+                bleManager?.disconnect()?.suspend()
+                bleManager = null
+            }
             stopMockMode()
             _connectionStatus.value = ConnectionStatus.DISCONNECTED
             _latestReading.value = null
@@ -267,7 +306,11 @@ class BluetoothService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.launch {
-            bleManager?.disconnect()?.suspend()
+            if (isClassicBluetooth) {
+                classicBtManager?.cleanup()
+            } else {
+                bleManager?.disconnect()?.suspend()
+            }
         }
         Log.d(TAG, "Service destroyed")
     }
