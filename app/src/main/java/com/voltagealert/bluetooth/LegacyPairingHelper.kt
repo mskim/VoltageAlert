@@ -27,13 +27,14 @@ object LegacyPairingHelper {
 
     /**
      * Attempt to pair with device using legacy PIN method.
-     * Tries common PIN codes in order until one succeeds.
+     * Tries to set PIN before starting pairing process.
      *
      * @param device The Bluetooth device to pair with
+     * @param pinIndex Which PIN from the list to try (0-based)
      * @return true if pairing was initiated successfully, false otherwise
      */
     @SuppressLint("MissingPermission")
-    fun attemptLegacyPairing(device: BluetoothDevice): Boolean {
+    fun attemptLegacyPairing(device: BluetoothDevice, pinIndex: Int = 0): Boolean {
         Log.d(TAG, "Attempting legacy PIN pairing with ${device.name} (${device.address})")
 
         // Check if already paired
@@ -49,6 +50,16 @@ object LegacyPairingHelper {
         }
 
         try {
+            // Try to set PIN BEFORE creating bond
+            if (pinIndex < COMMON_PINS.size) {
+                val pin = COMMON_PINS[pinIndex]
+                Log.d(TAG, "Pre-setting PIN ${pinIndex + 1}/${COMMON_PINS.size}: $pin")
+                setPin(device, pin)
+            }
+
+            // Small delay to let PIN set
+            Thread.sleep(100)
+
             // Start pairing process
             Log.d(TAG, "Starting createBond()...")
             val bondResult = device.createBond()

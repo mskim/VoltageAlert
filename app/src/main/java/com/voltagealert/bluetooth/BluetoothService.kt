@@ -148,12 +148,20 @@ class BluetoothService : Service() {
                     if (device.bondState != BluetoothDevice.BOND_BONDED) {
                         Log.d(TAG, "Device not bonded, attempting legacy pairing...")
 
+                        // Show PIN instructions to user (cannot auto-enter due to permission restrictions)
+                        serviceScope.launch(Dispatchers.Main) {
+                            PairingInstructionsHelper.showPinInstructions(
+                                this@BluetoothService,
+                                device.name ?: "ST9401-UP"
+                            )
+                        }
+
                         // Try legacy PIN-based pairing
                         val pairingStarted = LegacyPairingHelper.attemptLegacyPairing(device)
 
                         if (pairingStarted) {
                             Log.d(TAG, "Pairing initiated, waiting for bond...")
-                            // Wait for pairing to complete (PairingRequestReceiver will handle it)
+                            Log.d(TAG, "⚠️ Manual PIN entry required - try: 1234, 9527, 0000, 1111, 0001")
 
                             // Wait up to 30 seconds for pairing
                             var waitTime = 0
