@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App name -->
+    <string name="app_name">활선 접근 경보기</string>
+
+    <!-- Voltage levels (keep as-is) -->
+    <!-- voltage codes are translatable=false in base file -->
+
+    <!-- Diagnostic -->
+    <string name="diagnostic_ok">자가진단 정상</string>
+    <string name="diagnostic_ng">자가진단 오류</string>
+
+    <!-- Connection status -->
+    <string name="status_connected">센서 연결됨</string>
+    <string name="status_connecting">연결 중…</string>
+    <string name="status_scanning">센서 검색 중…</string>
+    <string name="status_disconnected">연결 안됨</string>
+
+    <!-- Main screen -->
+    <string name="current_voltage">현재 전압</string>
+    <string name="no_voltage_detected">전압 감지 없음</string>
+    <string name="event_log">이벤트 로그</string>
+    <string name="clear_logs">로그 삭제</string>
+    <string name="no_logs">기록된 이벤트 없음</string>
+    <string name="settings">설정</string>
+    <string name="test_alerts">경보 테스트</string>
+
+    <!-- Alert -->
+    <string name="alert_danger">고압 접근 알람</string>
+    <string name="alert_warning">⚠ 위험 - 후퇴하세요 ⚠</string>
+    <string name="alert_dismiss">확인</string>
+
+    <!-- Service -->
+    <string name="service_channel_name">전압 모니터링</string>
+    <string name="service_channel_description">전압 센서 지속 모니터링</string>
+
+    <!-- Permissions -->
+    <string name="permission_bluetooth_title">블루투스 권한 필요</string>
+    <string name="permission_bluetooth_message">전압 센서에 연결하려면 블루투스 권한이 필요합니다.</string>
+    <string name="permission_notification_title">알림 권한 필요</string>
+    <string name="permission_notification_message">전압 경보를 받으려면 알림을 활성화하세요.</string>
+    <string name="grant_permission">권한 허용</string>
+
+    <!-- Settings -->
+    <string name="pref_sound_enabled">소리 경보 활성화</string>
+    <string name="pref_vibration_enabled">진동 활성화</string>
+    <string name="pref_use_mock">모의 센서 사용 (디버그)</string>
+    <string name="pref_device_address">센서 장치 주소</string>
+
+    <!-- Errors -->
+    <string name="error_bluetooth_not_supported">이 기기는 블루투스 LE를 지원하지 않습니다</string>
+    <string name="error_connection_failed">센서 연결 실패</string>
+    <string name="error_permission_denied">권한이 거부되었습니다</string>
+
+    <!-- Common -->
+    <string name="ok">확인</string>
+    <string name="cancel">취소</string>
+</resources>

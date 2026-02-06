@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 baseline colors -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Safety-critical colors -->
+    <color name="danger_red">#FFD32F2F</color>
+    <color name="danger_red_dark">#FFC62828</color>
+    <color name="warning_yellow">#FFFBC02D</color>
+    <color name="safe_green">#FF388E3C</color>
+
+    <!-- Status colors -->
+    <color name="status_connected">#FF4CAF50</color>
+    <color name="status_connecting">#FFFFA726</color>
+    <color name="status_disconnected">#FF9E9E9E</color>
+
+    <!-- Background colors -->
+    <color name="background_main">#FFF5F5F5</color>
+    <color name="background_card">#FFFFFFFF</color>
+    <color name="background_alert">#FFFF0000</color>
+
+    <!-- Text colors -->
+    <color name="text_primary">#DE000000</color>
+    <color name="text_secondary">#99000000</color>
+    <color name="text_on_alert">#FFFFFFFF</color>
+</resources>
