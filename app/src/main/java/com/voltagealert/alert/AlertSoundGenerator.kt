@@ -34,23 +34,32 @@ class AlertSoundGenerator {
      * Start playing the alert sound.
      */
     fun start() {
+        println("====== AlertSoundGenerator.start() called ======")
+        Log.e(TAG, "====== START CALLED ======")
+
         if (audioTrack != null) {
             Log.w(TAG, "Sound already playing")
+            println("Sound already playing - returning")
             return
         }
 
         try {
+            println("Getting buffer size...")
             val bufferSize = AudioTrack.getMinBufferSize(
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
+            println("Buffer size: $bufferSize")
+            Log.e(TAG, "Buffer size: $bufferSize")
 
+            println("Building audio attributes...")
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
 
+            println("Creating AudioTrack...")
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(audioAttributes)
                 .setAudioFormat(
@@ -63,28 +72,43 @@ class AlertSoundGenerator {
                 .setBufferSizeInBytes(bufferSize)
                 .build()
 
+            println("AudioTrack created: ${audioTrack != null}")
+            println("AudioTrack state: ${audioTrack?.state}")
+            Log.e(TAG, "AudioTrack state: ${audioTrack?.state}")
+
+            println("Starting playback...")
             audioTrack?.play()
+            println("Play called. Play state: ${audioTrack?.playState}")
+            Log.e(TAG, "Play state: ${audioTrack?.playState}")
 
             playbackJob = scope.launch {
                 try {
+                    println("Playback coroutine started")
                     while (isActive) {
                         // Generate and play tone 1 (1200Hz)
                         val tone1 = generateTone(TONE_1_FREQ, TONE_DURATION_MS)
-                        audioTrack?.write(tone1, 0, tone1.size)
+                        val written1 = audioTrack?.write(tone1, 0, tone1.size)
+                        println("Wrote tone1: $written1 bytes")
 
                         // Generate and play tone 2 (800Hz)
                         val tone2 = generateTone(TONE_2_FREQ, TONE_DURATION_MS)
-                        audioTrack?.write(tone2, 0, tone2.size)
+                        val written2 = audioTrack?.write(tone2, 0, tone2.size)
+                        println("Wrote tone2: $written2 bytes")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Playback error", e)
+                    println("Playback error: ${e.message}")
+                    e.printStackTrace()
                 }
             }
 
-            Log.d(TAG, "Alert sound started")
+            Log.e(TAG, "====== Alert sound started successfully ======")
+            println("====== Alert sound started successfully ======")
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start alert sound", e)
+            println("EXCEPTION: ${e.message}")
+            e.printStackTrace()
             stop()
         }
     }

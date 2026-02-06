@@ -44,7 +44,7 @@ class BluetoothScanner(private val context: Context) {
         private val SERVICE_UUID = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb")
 
         // Device name prefixes to look for
-        private val DEVICE_NAME_PREFIXES = listOf("VoltSensor", "HM-10", "JDY-08", "MLT-BT05")
+        private val DEVICE_NAME_PREFIXES = listOf("ST940I-UP", "VoltSensor", "HM-10", "JDY-08", "MLT-BT05")
     }
 
     data class ScannedDevice(
@@ -116,23 +116,15 @@ class BluetoothScanner(private val context: Context) {
         _scanError.value = null
 
         // Build scan filters
+        // Use device name filter for ST940I-UP voltage sensor
         val filters = mutableListOf<ScanFilter>()
 
-        // Filter by service UUID
+        // Filter by device name (ST940I-UP)
         filters.add(
             ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(SERVICE_UUID))
+                .setDeviceName("ST940I-UP")
                 .build()
         )
-
-        // Filter by device name prefixes
-        DEVICE_NAME_PREFIXES.forEach { prefix ->
-            filters.add(
-                ScanFilter.Builder()
-                    .setDeviceName(prefix)
-                    .build()
-            )
-        }
 
         // Scan settings - balanced mode for good battery/performance
         val settings = ScanSettings.Builder()
