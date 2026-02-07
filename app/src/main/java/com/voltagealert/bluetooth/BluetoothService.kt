@@ -42,13 +42,10 @@ class BluetoothService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
 
     private var bleManager: SensorBleManager? = null
-    private var classicBtManager: ClassicBluetoothManager? = null
     private var mockJob: Job? = null
     private var useMockMode = false
     private var scanner: BluetoothScanner? = null
     private var scanJob: Job? = null
-    private var isClassicBluetooth = false
-    private var pairingReceiver: PairingRequestReceiver? = null
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -83,37 +80,6 @@ class BluetoothService : Service() {
         Log.d(TAG, "Service created")
         createNotificationChannel()
         scanner = BluetoothScanner(this)
-        registerPairingReceiver()
-    }
-
-    /**
-     * Register broadcast receiver to handle pairing requests.
-     */
-    private fun registerPairingReceiver() {
-        pairingReceiver = PairingRequestReceiver()
-        val filter = IntentFilter().apply {
-            addAction(BluetoothDevice.ACTION_PAIRING_REQUEST)
-            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
-            // Set high priority to intercept before system dialogs
-            priority = IntentFilter.SYSTEM_HIGH_PRIORITY
-        }
-        registerReceiver(pairingReceiver, filter)
-        Log.d(TAG, "Pairing receiver registered")
-    }
-
-    /**
-     * Unregister pairing receiver.
-     */
-    private fun unregisterPairingReceiver() {
-        pairingReceiver?.let {
-            try {
-                unregisterReceiver(it)
-                pairingReceiver = null
-                Log.d(TAG, "Pairing receiver unregistered")
-            } catch (e: IllegalArgumentException) {
-                // Already unregistered, ignore
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -126,119 +92,51 @@ class BluetoothService : Service() {
     }
 
     /**
-     * Connect to a Bluetooth device.
+     * Connect to BLE voltage sensor device.
+     * ST9401-UP uses ESP32-S3 with NimBLE - BLE with "Just Works" pairing (no PIN).
      */
     @SuppressLint("MissingPermission")
     fun connect(device: BluetoothDevice) {
         serviceScope.launch {
             try {
                 _connectionStatus.value = ConnectionStatus.CONNECTING
+                Log.d(TAG, "Connecting to BLE device: ${device.name} (${device.address})")
 
-                // Determine if device is Classic Bluetooth or BLE
-                // Classic BT devices have device.type == DEVICE_TYPE_CLASSIC (1)
-                // BLE devices have device.type == DEVICE_TYPE_LE (2)
-                // Dual mode devices have device.type == DEVICE_TYPE_DUAL (3)
-                isClassicBluetooth = device.type == BluetoothDevice.DEVICE_TYPE_CLASSIC ||
-                                     device.type == BluetoothDevice.DEVICE_TYPE_DUAL
-
-                Log.d(TAG, "Device type: ${device.type}, using ${if (isClassicBluetooth) "Classic BT" else "BLE"}")
-
-                if (isClassicBluetooth) {
-                    // For Classic Bluetooth, ensure device is paired first
-                    if (device.bondState != BluetoothDevice.BOND_BONDED) {
-                        Log.d(TAG, "Device not bonded, attempting legacy pairing...")
-
-                        // Show PIN instructions to user (cannot auto-enter due to permission restrictions)
-                        serviceScope.launch(Dispatchers.Main) {
-                            PairingInstructionsHelper.showPinInstructions(
-                                this@BluetoothService,
-                                device.name ?: "ST9401-UP"
-                            )
-                        }
-
-                        // Try legacy PIN-based pairing
-                        val pairingStarted = LegacyPairingHelper.attemptLegacyPairing(device)
-
-                        if (pairingStarted) {
-                            Log.d(TAG, "Pairing initiated, waiting for bond...")
-                            Log.d(TAG, "⚠️ Manual PIN entry required - try: 1234, 9527, 0000, 1111, 0001")
-
-                            // Wait up to 30 seconds for pairing
-                            var waitTime = 0
-                            while (device.bondState != BluetoothDevice.BOND_BONDED && waitTime < 30000) {
-                                delay(1000)
-                                waitTime += 1000
-
-                                if (device.bondState == BluetoothDevice.BOND_NONE) {
-                                    Log.w(TAG, "Pairing failed or cancelled")
-                                    break
-                                }
-                            }
-
-                            if (device.bondState != BluetoothDevice.BOND_BONDED) {
-                                throw Exception("Failed to pair with device after 30 seconds")
-                            }
-
-                            Log.d(TAG, "Device successfully paired!")
-                        } else {
-                            throw Exception("Failed to initiate pairing")
-                        }
-                    } else {
-                        Log.d(TAG, "Device already bonded")
+                // Create BLE manager
+                bleManager = SensorBleManager(
+                    context = this@BluetoothService,
+                    onReadingReceived = { reading ->
+                        _latestReading.value = reading
+                        _errorCount.value = 0
+                    },
+                    onConnectionStatusChanged = { status ->
+                        _connectionStatus.value = status
+                        updateNotification(status)
+                    },
+                    onError = {
+                        _errorCount.value = _errorCount.value + 1
                     }
+                )
 
-                    // Use Classic Bluetooth (SPP)
-                    classicBtManager = ClassicBluetoothManager(
-                        onReadingReceived = { reading ->
-                            _latestReading.value = reading
-                            _errorCount.value = 0
-                        },
-                        onConnectionStatusChanged = { status ->
-                            _connectionStatus.value = status
-                            updateNotification(status)
-                        },
-                        onError = {
-                            _errorCount.value = _errorCount.value + 1
-                        }
-                    )
+                // Connect via BLE GATT
+                // NimBLE "Just Works" pairing - no PIN required, automatic pairing
+                bleManager?.connect(device)
+                    ?.useAutoConnect(true)
+                    ?.retry(3, 100)
+                    ?.timeout(10000)
+                    ?.suspend()
 
-                    classicBtManager?.connect(device)
-                    Log.d(TAG, "Connecting via Classic Bluetooth: ${device.address}")
-
-                } else {
-                    // Use BLE (GATT)
-                    bleManager = SensorBleManager(
-                        context = this@BluetoothService,
-                        onReadingReceived = { reading ->
-                            _latestReading.value = reading
-                            _errorCount.value = 0
-                        },
-                        onConnectionStatusChanged = { status ->
-                            _connectionStatus.value = status
-                            updateNotification(status)
-                        },
-                        onError = {
-                            _errorCount.value = _errorCount.value + 1
-                        }
-                    )
-
-                    bleManager?.connect(device)
-                        ?.useAutoConnect(true)
-                        ?.retry(3, 100)
-                        ?.timeout(10000)
-                        ?.suspend()
-
-                    Log.d(TAG, "Connected via BLE: ${device.address}")
-                }
+                Log.d(TAG, "✓ Connected to BLE device: ${device.address}")
 
             } catch (e: Exception) {
-                Log.e(TAG, "Connection failed", e)
+                Log.e(TAG, "BLE connection failed", e)
                 _connectionStatus.value = ConnectionStatus.DISCONNECTED
                 _errorCount.value = _errorCount.value + 1
 
                 // Attempt reconnection after delay
                 delay(5000)
                 if (_connectionStatus.value == ConnectionStatus.DISCONNECTED) {
+                    Log.d(TAG, "Retrying connection...")
                     connect(device)  // Retry
                 }
             }
@@ -246,17 +144,12 @@ class BluetoothService : Service() {
     }
 
     /**
-     * Disconnect from the current device.
+     * Disconnect from the current BLE device.
      */
     fun disconnect() {
         serviceScope.launch {
-            if (isClassicBluetooth) {
-                classicBtManager?.disconnect()
-                classicBtManager = null
-            } else {
-                bleManager?.disconnect()?.suspend()
-                bleManager = null
-            }
+            bleManager?.disconnect()?.suspend()
+            bleManager = null
             stopMockMode()
             _connectionStatus.value = ConnectionStatus.DISCONNECTED
             _latestReading.value = null
@@ -382,13 +275,8 @@ class BluetoothService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.launch {
-            if (isClassicBluetooth) {
-                classicBtManager?.cleanup()
-            } else {
-                bleManager?.disconnect()?.suspend()
-            }
+            bleManager?.disconnect()?.suspend()
         }
-        unregisterPairingReceiver()
         Log.d(TAG, "Service destroyed")
     }
 
