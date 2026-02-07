@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoltageAlert Installation Guide - 활선 접근 경보기 설치 가이드</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        body {
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #1976D2;
+            border-bottom: 3px solid #1976D2;
+            padding-bottom: 10px;
+            page-break-after: avoid;
+        }
+        h2 {
+            color: #0D47A1;
+            margin-top: 30px;
+            page-break-after: avoid;
+        }
+        h3 {
+            color: #1565C0;
+            page-break-after: avoid;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+        }
+        .version-info {
+            background: #f5f5f5;
+            padding: 10px 15px;
+            border-left: 4px solid #1976D2;
+            margin: 20px 0;
+        }
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .step {
+            background: #e3f2fd;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #2196F3;
+        }
+        .permission-box {
+            background: #f1f8e9;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #8BC34A;
+        }
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .language-section {
+            page-break-before: always;
+        }
+        ul, ol {
+            margin-left: 20px;
+        }
+        li {
+            margin: 8px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background: #1976D2;
+            color: white;
+        }
+        @media print {
+            body { font-size: 11pt; }
+            h1 { font-size: 20pt; }
+            h2 { font-size: 16pt; }
+            h3 { font-size: 14pt; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>VoltageAlert Installation Guide<br>활선 접근 경보기 설치 가이드</h1>
+    <p><strong>Version 1.0.0 | February 2026</strong></p>
+</div>
+
+<div class="version-info">
+    <strong>📱 App Version:</strong> 1.0.0<br>
+    <strong>📅 Date:</strong> February 2026<br>
+    <strong>🤖 Platform:</strong> Android 8.0 and above
+</div>
+
+<!-- Print Instructions -->
+<div class="no-print" style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <h3>🖨️ To Save as PDF:</h3>
+    <ol>
+        <li>Press <kbd>Ctrl+P</kbd> (Windows) or <kbd>⌘+P</kbd> (Mac)</li>
+        <li>Select "Save as PDF" as printer</li>
+        <li>Click "Save"</li>
+    </ol>
+</div>
+
+<hr style="margin: 40px 0;">
+
+<!-- ENGLISH VERSION -->
+<h2>📱 English Version</h2>
+
+<h3>What is VoltageAlert?</h3>
+<p>VoltageAlert (활선 접근 경보기) is a workplace safety application designed for Korean power company workers. It provides real-time warnings when approaching dangerous high-voltage power lines through:</p>
+
+<ul>
+    <li>🔊 <strong>Audio alerts</strong> - Warning sounds</li>
+    <li>📳 <strong>Haptic alerts</strong> - Vibration patterns</li>
+    <li>🖼️ <strong>Visual alerts</strong> - Full-screen voltage warnings</li>
+    <li>📝 <strong>Event logging</strong> - Track all voltage detections</li>
+</ul>
+
+<h3>System Requirements</h3>
+
+<table>
+    <tr>
+        <th>Minimum</th>
+        <th>Recommended</th>
+    </tr>
+    <tr>
+        <td>
+            • Android 8.0 (Oreo) or higher<br>
+            • Bluetooth support<br>
+            • 50 MB free storage<br>
+            • Internet (initial setup only)
+        </td>
+        <td>
+            • Android 12 or higher<br>
+            • Samsung, LG, or major brands<br>
+            • Bluetooth 5.0+<br>
+            • 100 MB free storage
+        </td>
+    </tr>
+</table>
+
+<h3>Installation Steps</h3>
+
+<div class="step">
+    <h4>Step 1: Enable Unknown Sources</h4>
+    <p><strong>For Android 8-11:</strong></p>
+    <ol>
+        <li>Open <strong>Settings</strong></li>
+        <li>Tap <strong>Security</strong> or <strong>Lock screen and security</strong></li>
+        <li>Find <strong>Unknown sources</strong> or <strong>Install unknown apps</strong></li>
+        <li>Enable the toggle switch</li>
+        <li>Confirm when prompted</li>
+    </ol>
+    
+    <p><strong>For Android 12+:</strong></p>
+    <ol>
+        <li>Open <strong>Settings</strong></li>
+        <li>Tap <strong>Apps</strong></li>
+        <li>Tap <strong>Special app access</strong></li>
+        <li>Tap <strong>Install unknown apps</strong></li>
+        <li>Select your file manager or browser</li>
+        <li>Enable <strong>Allow from this source</strong></li>
+    </ol>
+    
+    <div class="warning">
+        ⚠️ <strong>Security Note:</strong> You can disable this after installation is complete.
+    </div>
+</div>
+
+<div class="step">
+    <h4>Step 2: Download the APK File</h4>
+    <p>Obtain the VoltageAlert APK file from your company IT department via:</p>
+    <ul>
+        <li>📧 Email attachment: <code>VoltageAlert-v1.0.0-release.apk</code></li>
+        <li>💾 USB drive: Copy to Downloads folder</li>
+        <li>☁️ Cloud storage: Google Drive, Dropbox, etc.</li>
+        <li>📱 Direct transfer: Bluetooth or file sharing</li>
+    </ul>
+    
+    <p><strong>File Details:</strong></p>
+    <ul>
+        <li>Filename: <code>VoltageAlert-v1.0.0-release.apk</code></li>
+        <li>Size: ~2.3 MB</li>
+        <li>Version: 1.0.0</li>
+    </ul>
+</div>
+
+<div class="step">
+    <h4>Step 3: Install the Application</h4>
+    <ol>
+        <li>Open <strong>My Files</strong> or <strong>Files</strong> app</li>
+        <li>Navigate to <strong>Downloads</strong> folder</li>
+        <li>Tap <code>VoltageAlert-v1.0.0-release.apk</code></li>
+        <li>Review permissions and tap <strong>Install</strong></li>
+        <li>Wait 5-10 seconds for installation</li>
+        <li>Tap <strong>Open</strong> to launch</li>
+    </ol>
+    
+    <div class="warning">
+        ⚠️ <strong>If you see a warning:</strong> "This type of file can harm your device"<br>
+        → Tap <strong>OK</strong> or <strong>Install anyway</strong><br>
+        → This is normal for APK files not from Play Store
+    </div>
+</div>
+
+<div class="step">
+    <h4>Step 4: Grant Permissions</h4>
+    <p>All permissions are required for proper functionality:</p>
+    
+    <div class="permission-box">
+        <strong>📶 Bluetooth / Nearby devices</strong><br>
+        <em>Why:</em> Connect to voltage sensor<br>
+        <em>Action:</em> Tap <strong>Allow</strong>
+    </div>
+    
+    <div class="permission-box">
+        <strong>📍 Location</strong><br>
+        <em>Why:</em> Required for Bluetooth scanning (Android 12+)<br>
+        <em>Action:</em> Tap <strong>Allow only while using the app</strong>
+    </div>
+    
+    <div class="permission-box">
+        <strong>🔔 Notifications</strong><br>
+        <em>Why:</em> Display voltage alerts<br>
+        <em>Action:</em> Tap <strong>Allow</strong>
+    </div>
+    
+    <div class="permission-box">
+        <strong>📳 Vibration</strong><br>
+        <em>Why:</em> Haptic alerts<br>
+        <em>Action:</em> Automatically granted
+    </div>
+</div>
+
+<h3>Using VoltageAlert</h3>
+
+<h4>Connecting to Sensor</h4>
+<ol>
+    <li>Power on your <strong>ST9401-UP</strong> voltage sensor</li>
+    <li>Tap <strong>Scan</strong> button in the app</li>
+    <li>Wait for device discovery (5-10 seconds)</li>
+    <li>When Android shows pairing dialog, enter PIN:</li>
+</ol>
+
+<table>
+    <tr>
+        <th>Try These PINs (in order)</th>
+    </tr>
+    <tr><td>1️⃣ <strong>1234</strong> (most common)</td></tr>
+    <tr><td>2️⃣ <strong>9527</strong> (ESP32 default)</td></tr>
+    <tr><td>3️⃣ <strong>0000</strong> (generic)</td></tr>
+    <tr><td>4️⃣ <strong>1111</strong></td></tr>
+    <tr><td>5️⃣ <strong>0001</strong></td></tr>
+</table>
+
+<h4>When Alert Triggers</h4>
+<p>When dangerous voltage is detected:</p>
+<ul>
+    <li>📱 <strong>Screen:</strong> Full-screen warning appears</li>
+    <li>🔊 <strong>Sound:</strong> Two-tone siren (1200Hz/800Hz)</li>
+    <li>📳 <strong>Vibration:</strong> Strong haptic pattern</li>
+    <li>⏰ <strong>Duration:</strong> Until you dismiss</li>
+</ul>
+
+<p><strong>To dismiss:</strong> Tap <strong>OK</strong> button and move away from danger area.</p>
+
+<h3>Troubleshooting</h3>
+
+<table>
+    <tr>
+        <th>Problem</th>
+        <th>Solution</th>
+    </tr>
+    <tr>
+        <td>App won't install</td>
+        <td>
+            • Check free storage (50 MB needed)<br>
+            • Enable "Unknown sources"<br>
+            • Restart phone and try again
+        </td>
+    </tr>
+    <tr>
+        <td>Bluetooth won't connect</td>
+        <td>
+            • Ensure sensor is powered on<br>
+            • Check Bluetooth is enabled<br>
+            • Try different PIN codes<br>
+            • Grant location permission
+        </td>
+    </tr>
+    <tr>
+        <td>No sound during alert</td>
+        <td>
+            • Check phone volume (50%+)<br>
+            • Disable Do Not Disturb<br>
+            • Test with Mock Mode
+        </td>
+    </tr>
+</table>
+
+<h3>Support</h3>
+<p>For technical issues, contact your company IT department.</p>
+
+<div class="warning">
+    <strong>⚠️ DISCLAIMER:</strong> This app is a supplementary safety tool. It does NOT replace standard safety equipment, procedures, or training. Always follow your company's safety protocols.
+</div>
+
+<!-- KOREAN VERSION -->
+<div class="language-section">
+    <h2 style="color: #D32F2F;">🇰🇷 한국어 버전</h2>
+
+    <h3>VoltageAlert란 무엇인가요?</h3>
+    <p>VoltageAlert (활선 접근 경보기)는 한국 전력 회사 직원을 위한 작업장 안전 애플리케이션입니다. 고압 전선 접근 시 실시간 경고를 제공합니다:</p>
+
+    <ul>
+        <li>🔊 <strong>음성 경고</strong> - 경고음</li>
+        <li>📳 <strong>진동 경고</strong> - 진동 패턴</li>
+        <li>🖼️ <strong>시각 경고</strong> - 전체 화면 전압 경고</li>
+        <li>📝 <strong>이벤트 로그</strong> - 모든 전압 감지 기록</li>
+    </ul>
+
+    <h3>시스템 요구사항</h3>
+
+    <table>
+        <tr>
+            <th>최소 요구사항</th>
+            <th>권장 사양</th>
+        </tr>
+        <tr>
+            <td>
+                • Android 8.0 이상<br>
+                • 블루투스 지원<br>
+                • 50 MB 이상 저장 공간<br>
+                • 인터넷 (초기 설정 시)
+            </td>
+            <td>
+                • Android 12 이상<br>
+                • 삼성, LG 등 주요 브랜드<br>
+                • 블루투스 5.0+<br>
+                • 100 MB 이상 저장 공간
+            </td>
+        </tr>
+    </table>
+
+    <h3>설치 단계</h3>
+
+    <div class="step">
+        <h4>1단계: 알 수 없는 소스 허용</h4>
+        <p><strong>Android 8-11:</strong></p>
+        <ol>
+            <li><strong>설정</strong> 열기</li>
+            <li><strong>보안</strong> 또는 <strong>잠금화면 및 보안</strong> 탭</li>
+            <li><strong>알 수 없는 소스</strong> 또는 <strong>알 수 없는 앱 설치</strong> 찾기</li>
+            <li>토글 스위치 활성화</li>
+            <li>메시지가 나타나면 확인</li>
+        </ol>
+        
+        <p><strong>Android 12+:</strong></p>
+        <ol>
+            <li><strong>설정</strong> 열기</li>
+            <li><strong>앱</strong> 탭</li>
+            <li><strong>특별 액세스</strong> 탭</li>
+            <li><strong>알 수 없는 앱 설치</strong> 탭</li>
+            <li>파일 관리자 또는 브라우저 선택</li>
+            <li><strong>이 소스 허용</strong> 활성화</li>
+        </ol>
+        
+        <div class="warning">
+            ⚠️ <strong>보안 참고:</strong> 설치 완료 후 이 설정을 비활성화할 수 있습니다.
+        </div>
+    </div>
+
+    <div class="step">
+        <h4>2단계: APK 파일 다운로드</h4>
+        <p>회사 IT 부서로부터 VoltageAlert APK 파일을 받으세요:</p>
+        <ul>
+            <li>📧 이메일 첨부: <code>VoltageAlert-v1.0.0-release.apk</code></li>
+            <li>💾 USB 드라이브: 다운로드 폴더로 복사</li>
+            <li>☁️ 클라우드 저장소: Google 드라이브, Dropbox 등</li>
+            <li>📱 직접 전송: 블루투스 또는 파일 공유</li>
+        </ul>
+        
+        <p><strong>파일 정보:</strong></p>
+        <ul>
+            <li>파일명: <code>VoltageAlert-v1.0.0-release.apk</code></li>
+            <li>크기: 약 2.3 MB</li>
+            <li>버전: 1.0.0</li>
+        </ul>
+    </div>
+
+    <div class="step">
+        <h4>3단계: 애플리케이션 설치</h4>
+        <ol>
+            <li><strong>내 파일</strong> 또는 <strong>파일</strong> 앱 열기</li>
+            <li><strong>다운로드</strong> 폴더로 이동</li>
+            <li><code>VoltageAlert-v1.0.0-release.apk</code> 탭</li>
+            <li>권한을 검토하고 <strong>설치</strong> 탭</li>
+            <li>5-10초 동안 설치 대기</li>
+            <li><strong>열기</strong>를 탭하여 실행</li>
+        </ol>
+        
+        <div class="warning">
+            ⚠️ <strong>경고가 표시되면:</strong> "이 유형의 파일은 기기를 손상시킬 수 있습니다"<br>
+            → <strong>확인</strong> 또는 <strong>무시하고 설치</strong> 탭<br>
+            → Play 스토어가 아닌 APK 파일의 정상적인 경고입니다
+        </div>
+    </div>
+
+    <div class="step">
+        <h4>4단계: 권한 부여</h4>
+        <p>모든 권한이 필요합니다:</p>
+        
+        <div class="permission-box">
+            <strong>📶 블루투스 / 근처 기기</strong><br>
+            <em>이유:</em> 전압 센서에 연결<br>
+            <em>조치:</em> <strong>허용</strong> 탭
+        </div>
+        
+        <div class="permission-box">
+            <strong>📍 위치</strong><br>
+            <em>이유:</em> 블루투스 스캔에 필요 (Android 12+)<br>
+            <em>조치:</em> <strong>앱 사용 중에만 허용</strong> 탭
+        </div>
+        
+        <div class="permission-box">
+            <strong>🔔 알림</strong><br>
+            <em>이유:</em> 전압 경고 표시<br>
+            <em>조치:</em> <strong>허용</strong> 탭
+        </div>
+        
+        <div class="permission-box">
+            <strong>📳 진동</strong><br>
+            <em>이유:</em> 진동 경고<br>
+            <em>조치:</em> 자동으로 부여됨
+        </div>
+    </div>
+
+    <h3>VoltageAlert 사용하기</h3>
+
+    <h4>센서 연결</h4>
+    <ol>
+        <li><strong>ST9401-UP</strong> 전압 센서 전원 켜기</li>
+        <li>앱에서 <strong>스캔</strong> 버튼 탭</li>
+        <li>장치 검색 대기 (5-10초)</li>
+        <li>Android 페어링 대화 상자가 나타나면 PIN 입력:</li>
+    </ol>
+
+    <table>
+        <tr>
+            <th>PIN 코드 (순서대로 시도)</th>
+        </tr>
+        <tr><td>1️⃣ <strong>1234</strong> (가장 일반적)</td></tr>
+        <tr><td>2️⃣ <strong>9527</strong> (ESP32 기본값)</td></tr>
+        <tr><td>3️⃣ <strong>0000</strong> (일반)</td></tr>
+        <tr><td>4️⃣ <strong>1111</strong></td></tr>
+        <tr><td>5️⃣ <strong>0001</strong></td></tr>
+    </table>
+
+    <h4>경고가 트리거될 때</h4>
+    <p>위험한 전압이 감지되면:</p>
+    <ul>
+        <li>📱 <strong>화면:</strong> 전체 화면 경고 표시</li>
+        <li>🔊 <strong>소리:</strong> 2톤 사이렌 (1200Hz/800Hz)</li>
+        <li>📳 <strong>진동:</strong> 강한 진동 패턴</li>
+        <li>⏰ <strong>지속 시간:</strong> 해제할 때까지</li>
+    </ul>
+
+    <p><strong>해제 방법:</strong> <strong>확인</strong> 버튼을 탭하고 위험 지역에서 이동하세요.</p>
+
+    <h3>문제 해결</h3>
+
+    <table>
+        <tr>
+            <th>문제</th>
+            <th>해결 방법</th>
+        </tr>
+        <tr>
+            <td>앱이 설치되지 않음</td>
+            <td>
+                • 여유 저장 공간 확인 (50 MB 필요)<br>
+                • "알 수 없는 소스" 활성화<br>
+                • 휴대폰 재시작 후 재시도
+            </td>
+        </tr>
+        <tr>
+            <td>블루투스가 연결되지 않음</td>
+            <td>
+                • 센서 전원 확인<br>
+                • 블루투스 활성화 확인<br>
+                • 다른 PIN 코드 시도<br>
+                • 위치 권한 부여
+            </td>
+        </tr>
+        <tr>
+            <td>경고 중 소리 없음</td>
+            <td>
+                • 휴대폰 볼륨 확인 (50% 이상)<br>
+                • 방해 금지 모드 비활성화<br>
+                • Mock 모드로 테스트
+            </td>
+        </tr>
+    </table>
+
+    <h3>지원</h3>
+    <p>기술 문제는 회사 IT 부서에 문의하세요.</p>
+
+    <div class="warning">
+        <strong>⚠️ 면책 조항:</strong> 이 앱은 보조 안전 도구입니다. 표준 안전 장비, 절차 또는 교육을 대체하지 않습니다. 항상 회사의 안전 프로토콜을 따르십시오.
+    </div>
+</div>
+
+<hr style="margin: 40px 0;">
+
+<div style="text-align: center; color: #666; padding: 20px;">
+    <p><strong>VoltageAlert 활선 접근 경보기</strong></p>
+    <p>Document Version: 1.0 | App Version: 1.0.0 | February 2026</p>
+    <p>Copyright © 2026 VoltageAlert. All rights reserved.</p>
+</div>
+
+</body>
+</html>
