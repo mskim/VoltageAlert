@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -22,6 +25,24 @@ android {
         }
     }
 
+    // Load keystore properties
+    val keystorePropertiesFile = rootProject.file("keystore.properties")
+    val keystoreProperties = Properties()
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = file("../${keystoreProperties.getProperty("storeFile")}")
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -30,6 +51,7 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("Boolean", "USE_MOCK_BLUETOOTH", "false")
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             buildConfigField("Boolean", "USE_MOCK_BLUETOOTH", "true")
