@@ -35,6 +35,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _logEntries = MutableStateFlow<List<VoltageLogEntry>>(emptyList())
     val logEntries: StateFlow<List<VoltageLogEntry>> = _logEntries.asStateFlow()
 
+    // Status message from BluetoothService
+    private val _statusMessage = MutableStateFlow("")
+    val statusMessage: StateFlow<String> = _statusMessage.asStateFlow()
+
     init {
         // Observe log entries from database
         viewModelScope.launch {
@@ -49,6 +53,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun updateConnectionStatus(status: ConnectionStatus) {
         _connectionStatus.value = status
+    }
+
+    /**
+     * Update status message (called by MainActivity when BluetoothService reports changes).
+     */
+    fun updateStatusMessage(message: String) {
+        _statusMessage.value = message
     }
 
     /**

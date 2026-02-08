@@ -45,10 +45,11 @@ class BluetoothScanner(private val context: Context) {
 
     companion object {
         private const val TAG = "BluetoothScanner"
-        private val SERVICE_UUID = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb")
+        // ST9401-UP / ESSYSTEM service UUID (confirmed by manufacturer)
+        private val SERVICE_UUID = UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb")
 
-        // Device name prefixes to look for
-        private val DEVICE_NAME_PREFIXES = listOf("ST940I-UP", "VoltSensor", "HM-10", "JDY-08", "MLT-BT05")
+        // Device name prefixes to look for (ST9401-UP confirmed from Mac scan!)
+        private val DEVICE_NAME_PREFIXES = listOf("ST9401-UP", "ST940I-UP", "ESSYSTEM", "VoltSensor", "HM-10", "JDY-08", "MLT-BT05")
     }
 
     data class ScannedDevice(
@@ -67,7 +68,40 @@ class BluetoothScanner(private val context: Context) {
                 UUID.fromString(it.uuid.toString())
             }
 
-            Log.d(TAG, "Device found: $name (${device.address}) RSSI: $rssi")
+            // Check manufacturer data for "220V WARNING"
+            val scanRecord = result.scanRecord
+            val manufacturerData = scanRecord?.manufacturerSpecificData
+            var hasVoltageData = false
+            if (manufacturerData != null) {
+                for (i in 0 until manufacturerData.size()) {
+                    val manufacturerId = manufacturerData.keyAt(i)
+                    val data = manufacturerData.valueAt(i)
+                    val dataString = String(data, Charsets.UTF_8)
+                    if (dataString.contains("220V") || dataString.contains("WARNING") || dataString.contains("ST940")) {
+                        Log.d(TAG, "⚡ FOUND VOLTAGE DEVICE! ${device.address} - MfgID: $manufacturerId, Data: ${data.contentToString()}, String: $dataString")
+                        hasVoltageData = true
+                    }
+                }
+            }
+
+            // Also check service data
+            val serviceDataMap = scanRecord?.serviceData
+            if (serviceDataMap != null) {
+                for (entry in serviceDataMap.entries) {
+                    val data = entry.value
+                    val dataString = String(data, Charsets.UTF_8)
+                    if (dataString.contains("220V") || dataString.contains("WARNING") || dataString.contains("ST940")) {
+                        Log.d(TAG, "⚡ FOUND VOLTAGE DEVICE! ${device.address} - Service UUID: ${entry.key}, Data: ${data.contentToString()}, String: $dataString")
+                        hasVoltageData = true
+                    }
+                }
+            }
+
+            if (hasVoltageData) {
+                Log.d(TAG, "🎯 VOLTAGE SENSOR DETECTED: $name (${device.address}) RSSI: $rssi")
+            } else {
+                Log.d(TAG, "Device found: $name (${device.address}) RSSI: $rssi")
+            }
 
             // Add to discovered devices
             val scannedDevice = ScannedDevice(device, name, rssi, serviceUuids)
@@ -128,16 +162,16 @@ class BluetoothScanner(private val context: Context) {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build()
 
-            // Scan filter for our service UUID (HM-10/JDY-08 standard)
+            // Filter for ESSYSTEM device only (confirmed device name)
             val scanFilters = listOf(
                 ScanFilter.Builder()
-                    .setServiceUuid(ParcelUuid(SERVICE_UUID))
+                    .setDeviceName("ESSYSTEM")  // Only scan for our voltage sensor
                     .build()
             )
 
             // Start BLE scan
             bleScanner?.startScan(scanFilters, scanSettings, scanCallback)
-            Log.d(TAG, "BLE scan started with service UUID filter")
+            Log.d(TAG, "BLE scan started WITH filter: device name = ESSYSTEM")
 
         } catch (e: SecurityException) {
             Log.e(TAG, "Missing Bluetooth permissions", e)

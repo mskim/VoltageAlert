@@ -30,7 +30,7 @@ enum class VoltageLevel(
         settingImageRes = R.drawable.voltage_380v_setting,
         detectionImageRes = R.drawable.voltage_380v_detection,
         detectionInvertedImageRes = R.drawable.voltage_380v_detection_inverted,
-        isDangerous = true
+        isDangerous = false  // Normal voltage - safe
     ),
     VOLTAGE_229KV(
         byteCode = 0x03,

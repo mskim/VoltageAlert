@@ -10,6 +10,7 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import java.util.Locale
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
@@ -104,6 +105,19 @@ class MainActivity : AppCompatActivity() {
         checkPermissionsAndStart()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Auto-scan when app comes to foreground if disconnected (Option B)
+        bluetoothService?.let { service ->
+            if (service.connectionStatus.value == ConnectionStatus.DISCONNECTED) {
+                service.clearStatusMessage()
+                // Auto-start scanning
+                Log.d("MainActivity", "🔍 Auto-starting scan (app resumed, disconnected)")
+                service.startScanning(autoConnect = true)
+            }
+        }
+    }
+
     private fun setupRecyclerView() {
         binding.rvEventLog.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
@@ -150,6 +164,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun testAlert(voltageLevel: com.voltagealert.models.VoltageLevel) {
+        android.util.Log.d("MainActivity", "🧪 TEST BUTTON CLICKED: $voltageLevel")
         // Create reading - the observer will trigger the alert
         val reading = com.voltagealert.models.VoltageReading(
             voltage = voltageLevel,
@@ -157,8 +172,10 @@ class MainActivity : AppCompatActivity() {
             sequenceNumber = 0,
             rawBytes = byteArrayOf()
         )
+        android.util.Log.d("MainActivity", "🧪 Calling viewModel.updateReading with: $reading")
         // Update reading - this will trigger the alert through the observer
         viewModel.updateReading(reading)
+        android.util.Log.d("MainActivity", "🧪 viewModel.updateReading completed")
     }
 
     private fun observeViewModel() {
@@ -171,12 +188,33 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                // Observe status message
+                launch {
+                    viewModel.statusMessage.collect { message ->
+                        if (message.isNotEmpty()) {
+                            binding.tvStatusMessage.text = message
+                            binding.tvStatusMessage.visibility = View.VISIBLE
+                        } else {
+                            binding.tvStatusMessage.visibility = View.GONE
+                        }
+                    }
+                }
+
                 // Observe latest reading
                 launch {
                     viewModel.latestReading.collect { reading ->
                         if (reading != null) {
                             val voltageText = getString(reading.voltage.displayNameRes)
+                            android.util.Log.d("MainActivity", "📱 UI updating voltage display: $voltageText")
                             binding.tvCurrentVoltage.text = voltageText
+
+                            // Change card color based on danger level
+                            val cardColor = if (reading.voltage.isDangerous) {
+                                ContextCompat.getColor(this@MainActivity, R.color.danger_red)
+                            } else {
+                                ContextCompat.getColor(this@MainActivity, R.color.safe_green)
+                            }
+                            binding.voltageCard.setStrokeColor(cardColor)
 
                             // Trigger alert if dangerous AND different from last alerted voltage
                             if (reading.voltage.isDangerous && reading.voltage != lastAlertedVoltage) {
@@ -188,6 +226,8 @@ class MainActivity : AppCompatActivity() {
                             }
                         } else {
                             binding.tvCurrentVoltage.text = getString(R.string.no_voltage_detected)
+                            // Reset to red when no voltage
+                            binding.voltageCard.setStrokeColor(ContextCompat.getColor(this@MainActivity, R.color.danger_red))
                             lastAlertedVoltage = null
                         }
                     }
@@ -214,6 +254,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun observeBluetoothService() {
         bluetoothService?.let { service ->
+            // Auto-start scanning if disconnected (Option B: Auto-scan on app start)
+            if (service.connectionStatus.value == ConnectionStatus.DISCONNECTED) {
+                Log.d("MainActivity", "🔍 Auto-starting scan (disconnected)")
+                service.startScanning(autoConnect = true)
+            }
+
             lifecycleScope.launch {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     // Observe connection status
@@ -229,6 +275,13 @@ class MainActivity : AppCompatActivity() {
                             reading?.let {
                                 viewModel.updateReading(it)
                             }
+                        }
+                    }
+
+                    // Observe status message
+                    launch {
+                        service.statusMessage.collect { message ->
+                            viewModel.updateStatusMessage(message)
                         }
                     }
                 }

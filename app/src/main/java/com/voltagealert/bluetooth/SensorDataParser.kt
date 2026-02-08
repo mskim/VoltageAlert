@@ -25,10 +25,66 @@ object SensorDataParser {
     /**
      * Parse a Bluetooth packet into a VoltageReading.
      *
-     * @param data The raw 10-byte packet
+     * Supports two formats:
+     * 1. ASCII text: "220V WARNING", "380V WARNING", "154KV WARNING", etc.
+     * 2. Binary: [0xAA][VoltageCode][SeqHi][SeqLo][CRC8][Padding...][0x55]
+     *
+     * @param data The raw packet data
      * @return VoltageReading if valid, null if invalid/corrupted
      */
     fun parsePacket(data: ByteArray): VoltageReading? {
+        // Try ASCII format first (actual format from ST9401-UP device)
+        val asciiReading = parseAsciiPacket(data)
+        if (asciiReading != null) {
+            return asciiReading
+        }
+
+        // Fall back to binary format (for future compatibility)
+        return parseBinaryPacket(data)
+    }
+
+    /**
+     * Parse ASCII text format: "220V WARNING", "380V WARNING", etc.
+     */
+    private fun parseAsciiPacket(data: ByteArray): VoltageReading? {
+        try {
+            // Convert bytes to ASCII string
+            val text = data.toString(Charsets.US_ASCII).trim()
+
+            // Extract voltage value (e.g., "220V", "380V", "154KV")
+            val voltagePattern = Regex("""(\d+)(V|KV)""")
+            val match = voltagePattern.find(text) ?: return null
+
+            val value = match.groupValues[1]
+            val unit = match.groupValues[2]
+
+            // Map to VoltageLevel
+            val voltage = when {
+                value == "220" && unit == "V" -> VoltageLevel.VOLTAGE_220V
+                value == "380" && unit == "V" -> VoltageLevel.VOLTAGE_380V
+                value == "154" && unit == "KV" -> VoltageLevel.VOLTAGE_154KV
+                value == "229" && unit == "KV" -> VoltageLevel.VOLTAGE_229KV
+                value == "345" && unit == "KV" -> VoltageLevel.VOLTAGE_345KV
+                value == "500" && unit == "KV" -> VoltageLevel.VOLTAGE_500KV
+                value == "765" && unit == "KV" -> VoltageLevel.VOLTAGE_765KV
+                else -> return null
+            }
+
+            return VoltageReading(
+                voltage = voltage,
+                timestamp = LocalDateTime.now(),
+                sequenceNumber = 0, // ASCII format doesn't include sequence number
+                rawBytes = data.copyOf()
+            )
+        } catch (e: Exception) {
+            return null
+        }
+    }
+
+    /**
+     * Parse binary packet format (legacy/future compatibility).
+     */
+    private fun parseBinaryPacket(data: ByteArray): VoltageReading? {
         // Validate packet size
         if (data.size != PACKET_SIZE) {
             return null

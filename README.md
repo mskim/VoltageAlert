@@ -17,16 +17,23 @@ The app is fully implemented with all major features:
 
 ## Features
 
+### Automatic Connection (No User Action Required!)
+- **Auto-scan on app start**: Finds device automatically within 5-8 seconds
+- **Continuous rescanning**: If disconnected, rescans every 8 seconds until found
+- **Background monitoring**: Keeps monitoring even when app is minimized
+- **Smart filtering**: Only scans for "ESSYSTEM" device (fast!)
+
 ### Safety-Critical Alerts
-- **Visual**: Full-screen alert activity with voltage-specific images
+- **Visual**: Color-coded display (GREEN = safe, RED = dangerous)
+- **Full-screen alert**: Voltage-specific warning screens for dangerous levels
 - **Audio**: Two-tone siren (1200Hz/800Hz) using USAGE_ALARM stream
 - **Haptic**: Strong vibration pattern
 - **Wake Lock**: Automatically turns screen on and shows alert on lock screen
 
 ### Voltage Detection
 Monitors seven voltage levels:
-- **Low Voltage**: 220V, 380V
-- **High Voltage**: 154KV, 229KV, 345KV, 500KV, 765KV
+- **Safe Voltage** (220V, 380V): GREEN display, NO alert
+- **Dangerous Voltage** (154KV, 229KV, 345KV, 500KV, 765KV): RED display, FULL alert
 - **Diagnostics**: Self-test OK/NG indicators
 
 ### Event Logging
@@ -36,14 +43,16 @@ Monitors seven voltage levels:
 - Persistent storage using Room database
 
 ### Bluetooth Protocol
-Custom 10-byte packet protocol:
-```
-[0xAA][VoltageCode][SeqHi][SeqLo][CRC8][Padding...][0x55]
-```
-- Service UUID: `0000ffe0-0000-1000-8000-00805f9b34fb`
-- Characteristic UUID: `0000ffe1-0000-1000-8000-00805f9b34fb`
-- Auto-reconnect with exponential backoff
-- CRC8 validation
+**ST9401-UP Device Protocol** (ASCII Text Format):
+- **Device Name**: ESSYSTEM
+- **MAC Address**: 30:ED:A0:D4:8D:92
+- **Data Format**: ASCII text (e.g., "220V WARNING")
+- **Service UUID**: `0000fff0-0000-1000-8000-00805f9b34fb`
+- **Characteristic UUID**: `0000fff1-0000-1000-8000-00805f9b34fb`
+- **Properties**: READ, NOTIFY
+- **Auto-reconnect**: Continuous rescanning every 8 seconds if disconnected
+- **Scan Time**: 5 seconds per scan
+- **Wait Between Scans**: 3 seconds
 
 ## Architecture
 
@@ -161,11 +170,17 @@ Output: `app/build/outputs/apk/release/app-release.apk`
 ## Configuration
 
 ### Bluetooth Device
-Default device name filter: `"VoltSensor-"`
+**Configured for ST9401-UP Device:**
+- Device name: `"ESSYSTEM"`
+- Scan filter enabled (only scans for ESSYSTEM - fast!)
 
-To change, modify `BluetoothService.kt`:
+To change device name, modify `BluetoothScanner.kt`:
 ```kotlin
-private const val DEVICE_NAME_PREFIX = "YourDeviceName-"
+val scanFilters = listOf(
+    ScanFilter.Builder()
+        .setDeviceName("YOUR_DEVICE_NAME")
+        .build()
+)
 ```
 
 ### Alert Frequencies
@@ -183,13 +198,41 @@ private val VIBRATION_PATTERN = longArrayOf(
 )
 ```
 
+## User Guide
+
+### First Time Setup
+1. Install APK on Android device (API 26+)
+2. Launch app
+3. Grant Bluetooth and Notification permissions
+4. App automatically starts scanning for ESSYSTEM device
+
+### Daily Use
+1. **Launch app** - Auto-scanning starts immediately
+2. **Bring ST9401-UP device near power source** - Device detects voltage and starts advertising
+3. **Wait 5-8 seconds** - App finds and connects automatically
+4. **Monitor voltage** - GREEN card = safe, RED card = dangerous
+5. **If dangerous voltage detected** - Full-screen alert + sound + vibration
+6. **Tap OK** to dismiss alert
+
+### Device States
+- **GREEN card (220V, 380V)**: Safe voltage detected, no alert
+- **RED card (154KV+)**: Dangerous voltage! Alert triggered
+- **"No voltage detected"**: Device not detecting any voltage (LCD black)
+- **"Scanning..."**: Looking for ESSYSTEM device
+- **"Connected"**: Monitoring voltage in real-time
+
+### Troubleshooting
+- **Device not connecting?** Make sure ST9401-UP is detecting voltage (LCD showing voltage, fast blinking LED)
+- **App keeps rescanning?** Device stops advertising when not detecting voltage - bring near power source
+- **Slow connection?** Device may take 5-8 seconds to be found after it starts advertising
+
 ## Known Limitations
 
-1. **Settings Activity**: Placeholder implementation (preferences not functional yet)
-2. **Mock Bluetooth Toggle**: Debug menu not yet implemented in MainActivity
-3. **Launcher Icons**: Using placeholder adaptive icons
-4. **Network Issues**: No handling for sensor firmware updates
-5. **Battery Optimization**: May need user whitelisting for reliable background operation
+1. **Settings Activity**: Not yet implemented (volume, preferences)
+2. **Manual scan button**: Hidden (auto-scan is always active)
+3. **Mock mode**: Hidden in production (testing only)
+4. **Single device**: Only supports one ESSYSTEM device at a time
+5. **Battery Optimization**: May need user whitelisting for reliable 24/7 background operation
 
 ## Next Steps
 

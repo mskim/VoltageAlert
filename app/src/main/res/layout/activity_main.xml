@@ -28,47 +28,67 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:padding="16dp"
-                    android:gravity="center_vertical">
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
-                    <View
-                        android:id="@+id/statusIndicator"
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
-                        android:layout_marginEnd="12dp"
-                        android:background="@drawable/status_indicator"
-                        android:backgroundTint="@color/status_disconnected" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
 
+                        <View
+                            android:id="@+id/statusIndicator"
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:layout_marginEnd="12dp"
+                            android:background="@drawable/status_indicator"
+                            android:backgroundTint="@color/status_disconnected" />
+
+                        <TextView
+                            android:id="@+id/tvConnectionStatus"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/status_disconnected"
+                            android:textSize="16sp"
+                            android:textColor="@color/text_primary" />
+
+                        <Button
+                            android:id="@+id/btnScan"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Scan"
+                            android:textSize="12sp"
+                            android:layout_marginEnd="8dp"
+                            android:visibility="gone"
+                            style="@style/Widget.Material3.Button.OutlinedButton" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchMockMode"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Mock"
+                            android:textSize="12sp"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <!-- Status message -->
                     <TextView
-                        android:id="@+id/tvConnectionStatus"
-                        android:layout_width="0dp"
+                        android:id="@+id/tvStatusMessage"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/status_disconnected"
-                        android:textSize="16sp"
-                        android:textColor="@color/text_primary" />
-
-                    <Button
-                        android:id="@+id/btnScan"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Scan"
-                        android:textSize="12sp"
-                        android:layout_marginEnd="8dp"
-                        style="@style/Widget.Material3.Button.OutlinedButton" />
-
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchMockMode"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Mock"
-                        android:textSize="12sp" />
+                        android:layout_marginTop="8dp"
+                        android:layout_marginStart="28dp"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_secondary"
+                        android:visibility="gone" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <!-- Current Voltage Display Card -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/voltageCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
