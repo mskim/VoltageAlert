@@ -93,3 +93,4 @@ lint/tmp/
 .Trashes
 ehthumbs.db
 Thumbs.db
+gradle/wrapper/*.zip
