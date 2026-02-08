@@ -13,7 +13,19 @@ The app is fully implemented with all major features:
 - ✅ Event logging with duplicate suppression
 - ✅ Bilingual support (Korean/English)
 - ✅ 23 voltage warning images converted and integrated
+- ✅ Professional app launcher icon (Lightning Bolt design)
 - ✅ Unit tests for core logic
+
+## App Icon
+
+Professional Lightning Bolt design for maximum visibility and instant recognition:
+- ⚡ **Bold white lightning bolt** on vibrant red-orange background (#FF3D00)
+- ⭕ **Yellow warning ring** for enhanced safety visibility
+- 📱 **Adaptive icon support** (Android 8.0+) with separate foreground/background layers
+- 🔄 **Round icon variants** for launchers that support circular icons
+- 📐 **Complete density coverage** (mdpi through xxxhdpi - 48px to 192px)
+
+The lightning bolt icon immediately communicates high-voltage danger and matches the app's safety-critical purpose.
 
 ## Features
 
@@ -92,6 +104,7 @@ VoltageAlert/
 │   │       ├── layout/           # XML layouts
 │   │       ├── values/           # English strings
 │   │       ├── values-ko/        # Korean strings
+│   │       ├── mipmap-*/         # App launcher icons (all densities)
 │   │       └── drawable-xxhdpi/  # 23 voltage warning images (PNG)
 │   └── src/test/                 # Unit tests
 └── images/                       # Original BMP source images
@@ -239,9 +252,8 @@ private val VIBRATION_PATTERN = longArrayOf(
 ### High Priority
 1. Implement SettingsActivity with PreferenceFragment
 2. Add debug menu for mock Bluetooth toggle
-3. Create proper launcher icons
-4. Test on physical devices with various Android versions
-5. Implement actual Bluetooth device discovery and pairing UI
+3. Test on physical devices with various Android versions
+4. Implement actual Bluetooth device discovery and pairing UI
 
 ### Medium Priority
 1. Add battery optimization whitelist prompt
