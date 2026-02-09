@@ -22,10 +22,12 @@ object BluetoothPermissionHelper {
                 Manifest.permission.BLUETOOTH_SCAN
             )
         } else {
-            // Android 11 and below
+            // Android 8.0 - 11 (API 26-30)
+            // BLE scanning requires ACCESS_FINE_LOCATION on these versions
             arrayOf(
                 Manifest.permission.BLUETOOTH,
-                Manifest.permission.BLUETOOTH_ADMIN
+                Manifest.permission.BLUETOOTH_ADMIN,
+                Manifest.permission.ACCESS_FINE_LOCATION
             )
         }
     }
