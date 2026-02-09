@@ -161,12 +161,31 @@ Output: `app/build/outputs/apk/release/app-release.apk`
 
 ## Installation
 
-### Via ADB
+### Prerequisites
+- Android device running Android 8.0 (API 26) or higher
+- USB debugging enabled (for ADB installation)
+- Or ability to install APK files from unknown sources
+
+### Via ADB (Recommended for Development)
 ```bash
+# Install debug APK
 ~/Library/Android/sdk/platform-tools/adb install app/build/outputs/apk/debug/app-debug.apk
+
+# Or install release APK (production)
+~/Library/Android/sdk/platform-tools/adb install app/build/outputs/apk/release/app-release.apk
+
+# To update existing installation
+~/Library/Android/sdk/platform-tools/adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-### View Logs
+### Via File Transfer (For End Users)
+1. Copy `app-release.apk` to your Android device
+2. Open the APK file on your device
+3. Tap "Install" (may need to enable "Install from unknown sources" in Settings)
+4. Wait for installation to complete
+5. Look for the ⚡ **Lightning Bolt icon** on your home screen
+
+### View Logs (Debugging)
 ```bash
 ~/Library/Android/sdk/platform-tools/adb logcat -d | grep VoltageAlert
 ```
@@ -214,10 +233,14 @@ private val VIBRATION_PATTERN = longArrayOf(
 ## User Guide
 
 ### First Time Setup
-1. Install APK on Android device (API 26+)
-2. Launch app
-3. Grant Bluetooth and Notification permissions
-4. App automatically starts scanning for ESSYSTEM device
+1. **Install APK** on Android device (API 26+)
+2. **Find the app** - Look for the ⚡ Lightning Bolt icon with red-orange background
+3. **Launch app** - Tap the VoltageAlert icon
+4. **Grant permissions** when prompted:
+   - Bluetooth permissions (required for sensor connection)
+   - Notification permissions (required for alerts)
+5. **Auto-scan starts** - App automatically begins scanning for ESSYSTEM device
+6. **Ready!** - No further setup needed
 
 ### Daily Use
 1. **Launch app** - Auto-scanning starts immediately
