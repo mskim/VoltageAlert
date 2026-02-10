@@ -16,6 +16,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.voltagealert.R
+import com.voltagealert.alert.AlertCoordinator
 import com.voltagealert.models.ConnectionStatus
 import com.voltagealert.models.VoltageReading
 import com.voltagealert.testing.MockBluetoothDevice
@@ -47,6 +48,8 @@ class BluetoothService : Service() {
     private var useMockMode = false
     private var scanner: BluetoothScanner? = null
     private var scanJob: Job? = null
+    private var autoConnectJob: Job? = null
+    private var scanTimeoutJob: Job? = null
     private var readingTimeoutJob: Job? = null
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
@@ -113,43 +116,10 @@ class BluetoothService : Service() {
                 cleanupBleManager()
 
                 // Create BLE manager
-                bleManager = SensorBleManager(
-                    context = this@BluetoothService,
-                    onReadingReceived = { reading ->
-                        Log.d(TAG, "🔄 Emitting reading to UI: ${reading.voltage}")
-                        _latestReading.value = reading
-                        _errorCount.value = 0
-
-                        // Restart 2-second reading timeout
-                        // When sensor stops sending, this fires and clears the reading
-                        readingTimeoutJob?.cancel()
-                        readingTimeoutJob = serviceScope.launch {
-                            delay(2000)
-                            Log.d(TAG, "⏱️ Reading timeout - sensor stopped sending, clearing reading")
-                            _latestReading.value = null
-                        }
-                    },
-                    onConnectionStatusChanged = { status ->
-                        _connectionStatus.value = status
-                        updateNotification(status)
-                        if (status == ConnectionStatus.DISCONNECTED) {
-                            // Clear reading immediately on disconnect
-                            readingTimeoutJob?.cancel()
-                            _latestReading.value = null
-                            Log.d(TAG, "🔴 BLE disconnected - cleared reading")
-                            if (!useMockMode) {
-                                autoRescanOnDisconnect()
-                            }
-                        }
-                    },
-                    onError = {
-                        _errorCount.value = _errorCount.value + 1
-                    }
-                )
+                bleManager = createBleManager()
 
                 // Connect via BLE GATT
                 // useAutoConnect(false) = direct connection (fast, 5-10 seconds)
-                // useAutoConnect(true)  = passive scanning (slow, can take 30+ minutes!)
                 bleManager?.connect(device)
                     ?.useAutoConnect(false)
                     ?.retry(3, 100)
@@ -162,14 +132,68 @@ class BluetoothService : Service() {
                 Log.e(TAG, "BLE connection failed", e)
                 _connectionStatus.value = ConnectionStatus.DISCONNECTED
                 _errorCount.value = _errorCount.value + 1
-
-                // Attempt reconnection after delay
-                delay(5000)
-                if (_connectionStatus.value == ConnectionStatus.DISCONNECTED) {
-                    Log.d(TAG, "Retrying connection...")
-                    connect(device)  // Retry
-                }
+                // Don't retry here - autoRescanOnDisconnect handles reconnection
             }
+        }
+    }
+
+    /**
+     * Create a new SensorBleManager with shared callbacks.
+     * Centralizes the reading timeout, alert auto-stop, and disconnect handling.
+     */
+    private fun createBleManager(): SensorBleManager {
+        return SensorBleManager(
+            context = this@BluetoothService,
+            onReadingReceived = { reading ->
+                Log.d(TAG, "🔄 Emitting reading to UI: ${reading.voltage}")
+                _latestReading.value = reading
+                _errorCount.value = 0
+
+                // Restart 2-second reading timeout
+                // When sensor stops sending, this fires and clears the reading + stops alarm
+                readingTimeoutJob?.cancel()
+                readingTimeoutJob = serviceScope.launch {
+                    delay(2000)
+                    Log.d(TAG, "⏱️ Reading timeout - sensor stopped sending")
+                    _latestReading.value = null
+                    // Stop alarm directly from service (MainActivity might be paused behind AlertActivity)
+                    stopAlertFromService()
+                }
+            },
+            onConnectionStatusChanged = { status ->
+                _connectionStatus.value = status
+                updateNotification(status)
+                if (status == ConnectionStatus.DISCONNECTED) {
+                    // Clear reading and stop alarm immediately on disconnect
+                    readingTimeoutJob?.cancel()
+                    _latestReading.value = null
+                    stopAlertFromService()
+                    Log.d(TAG, "🔴 BLE disconnected - cleared reading, stopped alarm")
+                    if (!useMockMode) {
+                        autoRescanOnDisconnect()
+                    }
+                }
+            },
+            onError = {
+                _errorCount.value = _errorCount.value + 1
+            }
+        )
+    }
+
+    /**
+     * Stop any active alert directly from the service.
+     * This is needed because MainActivity may be paused (behind AlertActivity)
+     * and its lifecycle-bound collectors won't run.
+     */
+    private fun stopAlertFromService() {
+        try {
+            val coordinator = AlertCoordinator.getInstance(this@BluetoothService)
+            if (coordinator.isAlertActive()) {
+                Log.d(TAG, "🔇 Auto-stopping alert from service")
+                coordinator.stopAllAlerts()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop alert: ${e.message}")
         }
     }
 
@@ -294,9 +318,17 @@ class BluetoothService : Service() {
     /**
      * Start scanning for voltage sensor devices.
      * Automatically connects to the best matching device when found.
+     *
+     * IMPORTANT: All previous scanning/connecting coroutines are cancelled first
+     * to prevent coroutine storms that throttle Android's BLE scanner.
      */
     fun startScanning(autoConnect: Boolean = true) {
         Log.d(TAG, "Starting Bluetooth scan (autoConnect=$autoConnect)")
+
+        // CRITICAL: Cancel ALL previous scanning/connecting coroutines first
+        // Without this, recursive calls create a coroutine storm that
+        // triggers Android's BLE scan throttle (5 starts in 30s = blocked)
+        stopScanning()
 
         // Stop mock mode if active
         if (useMockMode) {
@@ -305,7 +337,7 @@ class BluetoothService : Service() {
 
         _connectionStatus.value = ConnectionStatus.SCANNING
         _statusMessage.value = "Scanning for devices..."
-        _discoveredDevices.value = emptyList()  // Clear old scan results
+        _discoveredDevices.value = emptyList()
         updateNotification(ConnectionStatus.SCANNING)
 
         scanner?.startScan()
@@ -314,215 +346,157 @@ class BluetoothService : Service() {
         scanJob = serviceScope.launch {
             scanner?.discoveredDevices?.collect { devices ->
                 _discoveredDevices.value = devices
-                _statusMessage.value = "Found ${devices.size} devices..."
+                if (devices.isNotEmpty()) {
+                    _statusMessage.value = "Found ${devices.size} devices..."
+                }
                 Log.d(TAG, "Discovered ${devices.size} devices")
             }
         }
 
         // Auto-connect after collecting devices
         if (autoConnect) {
-            serviceScope.launch {
-                delay(5000) // Wait 5 seconds to find ESSYSTEM (BLE devices found quickly with name filter)
+            autoConnectJob = serviceScope.launch {
+                // Retry loop: scan → check → connect → if fail, scan again
+                // All in ONE coroutine, no recursive calls
+                var retryCount = 0
+                val maxRetries = 20  // Try up to 20 times (about 3 minutes)
 
-                val devices = _discoveredDevices.value
-                if (devices.isEmpty()) {
-                    // No devices found - rescan after delay
-                    stopScanning()
-                    Log.w(TAG, "⚠️ No devices found in scan. Rescanning in 3 seconds...")
-                    _statusMessage.value = "No devices found. Rescanning..."
-                    _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                    delay(3000) // Wait 3 seconds before rescanning
-                    if (_connectionStatus.value == ConnectionStatus.DISCONNECTED) {
-                        Log.d(TAG, "🔄 Auto-rescanning (no devices found)...")
-                        startScanning(autoConnect = true)
-                    }
-                    return@launch
-                }
+                while (retryCount < maxRetries) {
+                    retryCount++
 
-                if (_connectionStatus.value != ConnectionStatus.SCANNING) {
-                    return@launch
-                }
+                    // Wait for scan results (longer on retries to avoid BLE throttle)
+                    val scanWait = if (retryCount == 1) 5000L else 8000L
+                    delay(scanWait)
 
-                stopScanning()
-
-                Log.d(TAG, "📊 Auto-connect: Found ${devices.size} total devices after scan")
-                _statusMessage.value = "Found ${devices.size} devices! Testing for voltage sensor..."
-
-                // LOG ALL DISCOVERED DEVICE NAMES for debugging
-                Log.d(TAG, "📱 ALL DISCOVERED DEVICES:")
-                devices.forEach { scannedDevice ->
-                    val name = scannedDevice.name ?: "[NO NAME]"
-                    val mac = scannedDevice.device.address
-                    val rssi = scannedDevice.rssi
-                    Log.d(TAG, "  - $name ($mac) RSSI: $rssi")
-                }
-
-                    // FIRST: Try the last successfully connected device (if saved)
-                    val lastMac = getLastConnectedDevice()
-                    val targetDevice = if (lastMac != null) {
-                        devices.find { it.device.address.equals(lastMac, ignoreCase = true) }
-                    } else {
-                        null
-                    }
-
-                    if (targetDevice != null) {
-                        Log.d(TAG, "🎯 Found last connected device: ${targetDevice.device.address}")
-                        Log.d(TAG, "🔌 Connecting to saved device (${targetDevice.device.address}) RSSI: ${targetDevice.rssi}")
-                        _statusMessage.value = "Connecting to saved device..."
-
-                        try {
-                            _connectionStatus.value = ConnectionStatus.CONNECTING
-                            connect(targetDevice.device)
-                            return@launch // Exit if successful
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to connect to ESSYSTEM: ${e.message}")
-                        }
-                    } else if (lastMac != null) {
-                        Log.w(TAG, "⚠️ Last connected device $lastMac not found in scan")
-                    }
-
-                    // ONLY try ESSYSTEM devices (our confirmed device name)
-                    val essystemDevices = devices.filter { device ->
-                        device.name?.contains("ESSYSTEM", ignoreCase = true) == true
-                    }.sortedByDescending { it.rssi }
-
-                    if (essystemDevices.isEmpty()) {
-                        Log.e(TAG, "❌ No ESSYSTEM devices found among ${devices.size} devices")
-                        _statusMessage.value = "No ESSYSTEM found. Rescanning..."
-                        _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                        // Auto-rescan after delay
-                        delay(3000) // Wait 3 seconds before rescanning
-                        if (_connectionStatus.value == ConnectionStatus.DISCONNECTED) {
-                            Log.d(TAG, "🔄 Auto-rescanning (ESSYSTEM not found)...")
-                            startScanning(autoConnect = true)
-                        }
+                    // Check if we're still scanning (might have connected via other path)
+                    if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
+                        Log.d(TAG, "✅ Already connected, stopping scan loop")
                         return@launch
                     }
 
-                    val sortedDevices = essystemDevices
+                    val devices = _discoveredDevices.value
+                    Log.d(TAG, "📊 Scan attempt $retryCount: Found ${devices.size} devices")
 
-                    Log.d(TAG, "📊 Found ${devices.size} total devices: ${essystemDevices.size} ESSYSTEM")
+                    if (devices.isEmpty()) {
+                        Log.w(TAG, "⚠️ No devices found (attempt $retryCount/$maxRetries)")
+                        _statusMessage.value = "Searching... (attempt $retryCount)"
+                        // Restart the BLE scan for next iteration
+                        scanner?.stopScan()
+                        _discoveredDevices.value = emptyList()
+                        delay(2000)  // Brief pause before restarting scan
+                        scanner?.startScan()
+                        continue
+                    }
 
-                    Log.d(TAG, "🔍 Trying to connect to ${sortedDevices.size} ESSYSTEM device(s)...")
+                    // Stop scanning before connecting
+                    scanner?.stopScan()
 
-                    // Try each device until we find one with the voltage service
-                    for ((index, scannedDevice) in sortedDevices.withIndex()) {
-                        if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
-                            Log.d(TAG, "✅ Already connected, stopping search")
-                            break
-                        }
+                    // Log all discovered devices
+                    Log.d(TAG, "📱 DISCOVERED DEVICES:")
+                    devices.forEach { d ->
+                        Log.d(TAG, "  - ${d.name ?: "[NO NAME]"} (${d.device.address}) RSSI: ${d.rssi}")
+                    }
 
-                        Log.d(TAG, "🔌 Attempt ${index + 1}/${sortedDevices.size}: Trying ${scannedDevice.name ?: "unnamed"} (${scannedDevice.device.address}) RSSI: ${scannedDevice.rssi}")
-                        _statusMessage.value = "Testing device ${index + 1}/${sortedDevices.size}: ${scannedDevice.device.address.takeLast(8)}"
+                    // Try saved device first
+                    val lastMac = getLastConnectedDevice()
+                    val savedDevice = if (lastMac != null) {
+                        devices.find { it.device.address.equals(lastMac, ignoreCase = true) }
+                    } else null
 
+                    if (savedDevice != null) {
+                        Log.d(TAG, "🎯 Found saved device: ${savedDevice.device.address}")
+                        _statusMessage.value = "Connecting to saved device..."
                         try {
-                            _connectionStatus.value = ConnectionStatus.CONNECTING
-
-                            // Clean up any existing BLE manager first
-                            cleanupBleManager()
-
-                            // Try to connect with shorter timeout for faster iteration
-                            bleManager = SensorBleManager(
-                                context = this@BluetoothService,
-                                onReadingReceived = { reading ->
-                                    Log.d(TAG, "🔄 Emitting reading to UI: ${reading.voltage}")
-                                    _latestReading.value = reading
-                                    _errorCount.value = 0
-
-                                    // Restart 2-second reading timeout
-                                    readingTimeoutJob?.cancel()
-                                    readingTimeoutJob = serviceScope.launch {
-                                        delay(2000)
-                                        Log.d(TAG, "⏱️ Reading timeout - sensor stopped sending, clearing reading")
-                                        _latestReading.value = null
-                                    }
-                                },
-                                onConnectionStatusChanged = { status ->
-                                    _connectionStatus.value = status
-                                    updateNotification(status)
-                                    if (status == ConnectionStatus.DISCONNECTED) {
-                                        readingTimeoutJob?.cancel()
-                                        _latestReading.value = null
-                                        if (!useMockMode) {
-                                            autoRescanOnDisconnect()
-                                        }
-                                    }
-                                },
-                                onError = {
-                                    _errorCount.value = _errorCount.value + 1
-                                }
-                            )
-
-                            bleManager?.connect(scannedDevice.device)
-                                ?.useAutoConnect(false) // Direct connection (fast)
-                                ?.retry(1, 100)
-                                ?.timeout(5000) // 5 second timeout
-                                ?.suspend()
-
-                            Log.d(TAG, "✅ SUCCESS! Found voltage sensor: ${scannedDevice.device.address}")
-
-                            // Save MAC address for future quick connections
-                            saveLastConnectedDevice(scannedDevice.device.address)
-
-                            _statusMessage.value = "✅ Connected to voltage sensor!"
-                            return@launch // Found it, stop trying
-
+                            connect(savedDevice.device)
+                            return@launch
                         } catch (e: Exception) {
-                            Log.w(TAG, "❌ Device ${scannedDevice.device.address} failed (likely not voltage sensor): ${e.message}")
-                            _statusMessage.value = "Device ${index + 1} not sensor, trying next..."
-                            Log.d(TAG, "Cleaning up connection...")
-                            try {
-                                withTimeout(2000) {
-                                    bleManager?.disconnect()?.suspend()
-                                }
-                            } catch (disconnectError: Exception) {
-                                Log.d(TAG, "Disconnect failed or timed out: ${disconnectError.message}")
-                            } finally {
-                                try {
-                                    bleManager?.close()
-                                } catch (closeError: Exception) {
-                                    Log.d(TAG, "Close failed: ${closeError.message}")
-                                }
-                            }
-                            bleManager = null
-                            _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                            Log.d(TAG, "✅ Ready for next attempt...")
-                            delay(500) // Small delay before trying next device
+                            Log.e(TAG, "Saved device connection failed: ${e.message}")
                         }
                     }
 
-                // If we tried all devices and none worked
-                if (_connectionStatus.value != ConnectionStatus.CONNECTED) {
-                    Log.e(TAG, "❌ No voltage sensor found among ${sortedDevices.size} devices")
-                    _statusMessage.value = "No voltage sensor found. Tried ${sortedDevices.size} devices."
-                    _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                    updateNotification(ConnectionStatus.DISCONNECTED)
+                    // Try ESSYSTEM devices by signal strength
+                    val essystemDevices = devices.filter { d ->
+                        d.name?.contains("ESSYSTEM", ignoreCase = true) == true
+                    }.sortedByDescending { it.rssi }
+
+                    if (essystemDevices.isEmpty()) {
+                        Log.w(TAG, "⚠️ No ESSYSTEM found among ${devices.size} devices")
+                        _statusMessage.value = "No ESSYSTEM found. Retrying..."
+                        _discoveredDevices.value = emptyList()
+                        delay(2000)
+                        scanner?.startScan()
+                        continue
+                    }
+
+                    // Try each ESSYSTEM device
+                    var connected = false
+                    for ((index, scannedDevice) in essystemDevices.withIndex()) {
+                        Log.d(TAG, "🔌 Trying ${scannedDevice.name} (${scannedDevice.device.address})")
+                        _statusMessage.value = "Testing ${index + 1}/${essystemDevices.size}..."
+
+                        try {
+                            cleanupBleManager()
+                            bleManager = createBleManager()
+                            bleManager?.connect(scannedDevice.device)
+                                ?.useAutoConnect(false)
+                                ?.retry(1, 100)
+                                ?.timeout(5000)
+                                ?.suspend()
+
+                            Log.d(TAG, "✅ Connected to: ${scannedDevice.device.address}")
+                            saveLastConnectedDevice(scannedDevice.device.address)
+                            _statusMessage.value = "✅ Connected!"
+                            connected = true
+                            break
+                        } catch (e: Exception) {
+                            Log.w(TAG, "❌ Failed: ${e.message}")
+                            cleanupBleManager()
+                            delay(500)
+                        }
+                    }
+
+                    if (connected) return@launch
+
+                    // None worked, restart scan for next retry
+                    _connectionStatus.value = ConnectionStatus.SCANNING
+                    _statusMessage.value = "Retrying scan..."
+                    _discoveredDevices.value = emptyList()
+                    delay(2000)
+                    scanner?.startScan()
                 }
+
+                // Exhausted retries
+                Log.e(TAG, "❌ Failed to connect after $maxRetries attempts")
+                _statusMessage.value = "Connection failed. Tap Scan to retry."
+                _connectionStatus.value = ConnectionStatus.DISCONNECTED
+                updateNotification(ConnectionStatus.DISCONNECTED)
             }
         }
 
-        // Auto-stop scan after 30 seconds if no device found (allow time for intermittent advertising)
-        serviceScope.launch {
-            delay(30000)
+        // Safety timeout
+        scanTimeoutJob = serviceScope.launch {
+            delay(180000)  // 3 minutes max
             if (_connectionStatus.value == ConnectionStatus.SCANNING) {
-                Log.d(TAG, "Scan timeout - no devices found")
+                Log.d(TAG, "Scan timeout after 3 minutes")
                 stopScanning()
-
-                // Try direct connection to known MAC address as last resort
-                Log.d(TAG, "🔧 Attempting direct connection to known ESSYSTEM MAC address...")
-                connectByMacAddress("30:ED:AD:D4:84:4E")
+                _connectionStatus.value = ConnectionStatus.DISCONNECTED
+                _statusMessage.value = "Scan timeout. Tap Scan to retry."
             }
         }
     }
 
     /**
-     * Stop scanning.
+     * Stop all scanning and related coroutines.
      */
     fun stopScanning() {
-        Log.d(TAG, "Stopping scan")
+        Log.d(TAG, "Stopping scan and all related coroutines")
         scanner?.stopScan()
         scanJob?.cancel()
         scanJob = null
+        autoConnectJob?.cancel()
+        autoConnectJob = null
+        scanTimeoutJob?.cancel()
+        scanTimeoutJob = null
     }
 
     /**
@@ -579,9 +553,32 @@ class BluetoothService : Service() {
         autoRescanJob = serviceScope.launch {
             delay(3000)  // Wait 3 seconds before rescanning
             if (_connectionStatus.value == ConnectionStatus.DISCONNECTED && !useMockMode) {
-                Log.d(TAG, "🔄 Auto-rescanning after connection lost (worker moved away)...")
-                _statusMessage.value = "Connection lost. Scanning for next sensor..."
-                startScanning(autoConnect = true)
+                Log.d(TAG, "🔄 Auto-rescanning after connection lost...")
+                _statusMessage.value = "Connection lost. Reconnecting..."
+
+                // First try: direct reconnect to saved device (fast, no scanning)
+                val savedMac = getLastConnectedDevice()
+                if (savedMac != null) {
+                    try {
+                        Log.d(TAG, "🎯 Trying direct reconnect to saved device: $savedMac")
+                        _connectionStatus.value = ConnectionStatus.CONNECTING
+                        connectByMacAddress(savedMac)
+                        // Wait for connection result
+                        delay(12000)
+                        if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
+                            Log.d(TAG, "✅ Direct reconnect succeeded!")
+                            return@launch
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Direct reconnect failed: ${e.message}")
+                    }
+                }
+
+                // Fallback: full scan
+                if (_connectionStatus.value != ConnectionStatus.CONNECTED) {
+                    Log.d(TAG, "🔄 Falling back to full scan...")
+                    startScanning(autoConnect = true)
+                }
             }
         }
     }

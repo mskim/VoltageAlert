@@ -34,25 +34,8 @@
         android:layout_marginTop="24dp"
         android:layout_marginBottom="24dp"
         android:scaleType="fitCenter"
-        android:contentDescription="@string/alert_warning"
+        android:contentDescription="@string/alert_danger"
         app:layout_constraintTop_toBottomOf="@id/tvAlertTitle"
-        app:layout_constraintBottom_toTopOf="@id/tvAlertWarning"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- Warning Text -->
-    <TextView
-        android:id="@+id/tvAlertWarning"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="24dp"
-        android:layout_marginEnd="24dp"
-        android:layout_marginBottom="32dp"
-        android:text="@string/alert_warning"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:textColor="@color/text_on_alert"
-        android:textAlignment="center"
         app:layout_constraintBottom_toTopOf="@id/btnDismiss"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
