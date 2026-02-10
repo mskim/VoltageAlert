@@ -601,27 +601,26 @@ class BluetoothService : Service() {
         override fun initialize() {
             requestMtu(512).enqueue()
 
+            lastReadingTime = System.currentTimeMillis()  // Reset watchdog timer
+
             dataCharacteristic?.let { char ->
                 Log.d(TAG, "🔔 Setting up notification callback for characteristic: ${char.uuid}")
 
                 setNotificationCallback(char).with { _, data ->
                     val bytes = data.value
-                    Log.d(TAG, "🔔 NOTIFICATION CALLBACK TRIGGERED! Data null? ${bytes == null}")
                     if (bytes != null) {
-                        // Log raw bytes received
                         val hexString = bytes.joinToString(" ") { "%02X".format(it) }
                         Log.d(TAG, "📡 RAW DATA RECEIVED via NOTIFY (${bytes.size} bytes): $hexString")
 
                         val reading = SensorDataParser.parsePacket(bytes)
                         if (reading != null) {
                             Log.d(TAG, "✅ Parsed voltage: ${reading.voltage}")
+                            lastReadingTime = System.currentTimeMillis()
                             onReadingReceived(reading)
                         } else {
                             Log.w(TAG, "❌ Invalid packet received - parsing failed")
                             onError()
                         }
-                    } else {
-                        Log.w(TAG, "⚠️ Notification received but data is null")
                     }
                 }
 
@@ -630,24 +629,35 @@ class BluetoothService : Service() {
                     Log.d(TAG, "✅ Notifications ENABLED successfully on ${char.uuid}")
                     // Start polling via READ as well (manufacturer hint shows READ + NOTIFY)
                     startPollingCharacteristic(char)
+                    // Start watchdog to recover from silent data loss
+                    startWatchdog()
                 }.fail { device, status ->
                     Log.e(TAG, "❌ Failed to enable notifications: status=$status")
+                    // Even if notifications fail, start polling - READ may still work
+                    startPollingCharacteristic(char)
+                    startWatchdog()
                 }.enqueue()
             }
 
             onConnectionStatusChanged(ConnectionStatus.CONNECTED)
         }
 
+        private var pollingJob: Job? = null
+
         private fun startPollingCharacteristic(char: BluetoothGattCharacteristic) {
             Log.d(TAG, "📖 Starting READ polling for characteristic: ${char.uuid}")
 
-            serviceScope.launch {
+            // Cancel any existing polling job before starting a new one
+            pollingJob?.cancel()
+
+            pollingJob = serviceScope.launch {
+                var consecutiveErrors = 0
+                val maxConsecutiveErrors = 30  // Allow up to 30 errors (15 seconds at 500ms interval)
+
                 while (isConnected && dataCharacteristic != null) {
                     try {
-                        Log.d(TAG, "📖 Attempting READ operation...")
                         readCharacteristic(char).with { _, data ->
                             val bytes = data.value
-                            Log.d(TAG, "📖 READ SUCCESSFUL! Data null? ${bytes == null}")
                             if (bytes != null) {
                                 val hexString = bytes.joinToString(" ") { "%02X".format(it) }
                                 Log.d(TAG, "📡 RAW DATA READ (${bytes.size} bytes): $hexString")
@@ -655,27 +665,86 @@ class BluetoothService : Service() {
                                 val reading = SensorDataParser.parsePacket(bytes)
                                 if (reading != null) {
                                     Log.d(TAG, "✅ Parsed voltage from READ: ${reading.voltage}")
+                                    lastReadingTime = System.currentTimeMillis()
                                     onReadingReceived(reading)
-                                } else {
-                                    Log.w(TAG, "❌ Invalid packet from READ")
+                                    consecutiveErrors = 0  // Reset error counter on success
                                 }
                             }
                         }.fail { _, status ->
                             Log.w(TAG, "⚠️ READ failed with status: $status")
+                            consecutiveErrors++
                         }.enqueue()
 
-                        // Poll every 500ms
                         delay(500)
                     } catch (e: Exception) {
-                        Log.e(TAG, "❌ Error during polling: ${e.message}")
-                        break
+                        consecutiveErrors++
+                        Log.w(TAG, "⚠️ Polling error ($consecutiveErrors/$maxConsecutiveErrors): ${e.message}")
+
+                        if (consecutiveErrors >= maxConsecutiveErrors) {
+                            Log.e(TAG, "❌ Too many consecutive polling errors, attempting recovery...")
+                            // Try to re-enable notifications as recovery
+                            try {
+                                dataCharacteristic?.let { currentChar ->
+                                    enableNotifications(currentChar).enqueue()
+                                    Log.d(TAG, "🔄 Re-enabled notifications for recovery")
+                                }
+                            } catch (re: Exception) {
+                                Log.e(TAG, "Recovery failed: ${re.message}")
+                            }
+                            consecutiveErrors = 0  // Reset and keep trying
+                        }
+
+                        // Wait before retrying (don't break the loop!)
+                        delay(2000)
                     }
                 }
-                Log.d(TAG, "📖 Polling stopped")
+                Log.d(TAG, "📖 Polling stopped (isConnected=$isConnected, char=${dataCharacteristic != null})")
+            }
+        }
+
+        /**
+         * Watchdog: periodically checks if data is flowing and attempts recovery if not.
+         */
+        private var watchdogJob: Job? = null
+        private var lastReadingTime = System.currentTimeMillis()
+
+        private fun startWatchdog() {
+            watchdogJob?.cancel()
+            watchdogJob = serviceScope.launch {
+                while (isConnected) {
+                    delay(15000)  // Check every 15 seconds
+
+                    val timeSinceLastReading = System.currentTimeMillis() - lastReadingTime
+                    if (timeSinceLastReading > 15000 && isConnected && dataCharacteristic != null) {
+                        Log.w(TAG, "🐕 Watchdog: No data for ${timeSinceLastReading/1000}s, attempting recovery...")
+
+                        try {
+                            dataCharacteristic?.let { char ->
+                                // Re-enable notifications
+                                enableNotifications(char).enqueue()
+                                Log.d(TAG, "🐕 Watchdog: Re-enabled notifications")
+
+                                // Restart polling if job is not active
+                                if (pollingJob?.isActive != true) {
+                                    Log.d(TAG, "🐕 Watchdog: Restarting polling loop")
+                                    startPollingCharacteristic(char)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "🐕 Watchdog recovery failed: ${e.message}")
+                        }
+                    }
+                }
+                Log.d(TAG, "🐕 Watchdog stopped")
             }
         }
 
         override fun onServicesInvalidated() {
+            Log.d(TAG, "🔴 Services invalidated - cleaning up polling and watchdog")
+            pollingJob?.cancel()
+            pollingJob = null
+            watchdogJob?.cancel()
+            watchdogJob = null
             dataCharacteristic = null
             onConnectionStatusChanged(ConnectionStatus.DISCONNECTED)
         }

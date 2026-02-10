@@ -51,8 +51,8 @@ object SensorDataParser {
             // Convert bytes to ASCII string
             val text = data.toString(Charsets.US_ASCII).trim()
 
-            // Extract voltage value (e.g., "220V", "380V", "154KV")
-            val voltagePattern = Regex("""(\d+)(V|KV)""")
+            // Extract voltage value (e.g., "220V", "380V", "154KV", "22.9KV")
+            val voltagePattern = Regex("""(\d+\.?\d*)(V|KV)""")
             val match = voltagePattern.find(text) ?: return null
 
             val value = match.groupValues[1]
@@ -63,7 +63,7 @@ object SensorDataParser {
                 value == "220" && unit == "V" -> VoltageLevel.VOLTAGE_220V
                 value == "380" && unit == "V" -> VoltageLevel.VOLTAGE_380V
                 value == "154" && unit == "KV" -> VoltageLevel.VOLTAGE_154KV
-                value == "229" && unit == "KV" -> VoltageLevel.VOLTAGE_229KV
+                (value == "229" || value == "22.9") && unit == "KV" -> VoltageLevel.VOLTAGE_229KV
                 value == "345" && unit == "KV" -> VoltageLevel.VOLTAGE_345KV
                 value == "500" && unit == "KV" -> VoltageLevel.VOLTAGE_500KV
                 value == "765" && unit == "KV" -> VoltageLevel.VOLTAGE_765KV

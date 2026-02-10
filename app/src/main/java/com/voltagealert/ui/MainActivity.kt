@@ -159,7 +159,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnTest220V.setOnClickListener { testAlert(com.voltagealert.models.VoltageLevel.VOLTAGE_220V) }
         binding.btnTest380V.setOnClickListener { testAlert(com.voltagealert.models.VoltageLevel.VOLTAGE_380V) }
         binding.btnTest154KV.setOnClickListener { testAlert(com.voltagealert.models.VoltageLevel.VOLTAGE_154KV) }
+        binding.btnTest229KV.setOnClickListener { testAlert(com.voltagealert.models.VoltageLevel.VOLTAGE_229KV) }
         binding.btnTest345KV.setOnClickListener { testAlert(com.voltagealert.models.VoltageLevel.VOLTAGE_345KV) }
+        binding.btnTest500KV.setOnClickListener { testAlert(com.voltagealert.models.VoltageLevel.VOLTAGE_500KV) }
         binding.btnTest765KV.setOnClickListener { testAlert(com.voltagealert.models.VoltageLevel.VOLTAGE_765KV) }
     }
 

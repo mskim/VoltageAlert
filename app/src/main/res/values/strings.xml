@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- App name -->
-    <string name="app_name">VoltageAlert</string>
+    <string name="app_name">HVPA</string>
 
     <!-- Voltage levels -->
     <string name="voltage_220v" translatable="false">220V</string>
     <string name="voltage_380v" translatable="false">380V</string>
-    <string name="voltage_229kv" translatable="false">229KV</string>
+    <string name="voltage_229kv" translatable="false">22.9KV</string>
     <string name="voltage_154kv" translatable="false">154KV</string>
     <string name="voltage_345kv" translatable="false">345KV</string>
     <string name="voltage_500kv" translatable="false">500KV</string>
@@ -40,7 +40,7 @@
 
     <!-- Permissions -->
     <string name="permission_bluetooth_title">Bluetooth Permission Required</string>
-    <string name="permission_bluetooth_message">VoltageAlert requires Bluetooth access to connect to the voltage sensor device.</string>
+    <string name="permission_bluetooth_message">HVPA requires Bluetooth access to connect to the voltage sensor device.</string>
     <string name="permission_notification_title">Notification Permission Required</string>
     <string name="permission_notification_message">Enable notifications to receive voltage alerts.</string>
     <string name="grant_permission">Grant Permission</string>

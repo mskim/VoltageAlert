@@ -95,7 +95,7 @@ class VoltageLogManager(context: Context) {
         return when (voltage) {
             VoltageLevel.VOLTAGE_220V -> "220V"
             VoltageLevel.VOLTAGE_380V -> "380V"
-            VoltageLevel.VOLTAGE_229KV -> "229KV"
+            VoltageLevel.VOLTAGE_229KV -> "22.9KV"
             VoltageLevel.VOLTAGE_154KV -> "154KV"
             VoltageLevel.VOLTAGE_345KV -> "345KV"
             VoltageLevel.VOLTAGE_500KV -> "500KV"
