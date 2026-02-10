@@ -272,8 +272,12 @@ class MainActivity : AppCompatActivity() {
                     // Observe readings
                     launch {
                         service.latestReading.collect { reading ->
-                            reading?.let {
-                                viewModel.updateReading(it)
+                            if (reading != null) {
+                                viewModel.updateReading(reading)
+                            } else {
+                                // CRITICAL: Forward null to ViewModel so lastAlertedVoltage resets
+                                // Without this, same voltage won't trigger alarm on second detection
+                                viewModel.clearReading()
                             }
                         }
                     }

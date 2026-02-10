@@ -317,165 +317,70 @@ class BluetoothService : Service() {
 
     /**
      * Start scanning for voltage sensor devices.
-     * Automatically connects to the best matching device when found.
-     *
-     * IMPORTANT: All previous scanning/connecting coroutines are cancelled first
-     * to prevent coroutine storms that throttle Android's BLE scanner.
+     * REACTIVE: Connects INSTANTLY when ESSYSTEM appears in scan results.
+     * No waiting for scan accumulation - safety-critical speed.
      */
     fun startScanning(autoConnect: Boolean = true) {
         Log.d(TAG, "Starting Bluetooth scan (autoConnect=$autoConnect)")
 
-        // CRITICAL: Cancel ALL previous scanning/connecting coroutines first
-        // Without this, recursive calls create a coroutine storm that
-        // triggers Android's BLE scan throttle (5 starts in 30s = blocked)
+        // Cancel ALL previous scanning/connecting coroutines
         stopScanning()
 
-        // Stop mock mode if active
         if (useMockMode) {
             stopMockMode()
         }
 
         _connectionStatus.value = ConnectionStatus.SCANNING
-        _statusMessage.value = "Scanning for devices..."
+        _statusMessage.value = "Scanning..."
         _discoveredDevices.value = emptyList()
         updateNotification(ConnectionStatus.SCANNING)
 
         scanner?.startScan()
 
-        // Observe scan results
-        scanJob = serviceScope.launch {
-            scanner?.discoveredDevices?.collect { devices ->
-                _discoveredDevices.value = devices
-                if (devices.isNotEmpty()) {
-                    _statusMessage.value = "Found ${devices.size} devices..."
-                }
-                Log.d(TAG, "Discovered ${devices.size} devices")
-            }
-        }
-
-        // Auto-connect after collecting devices
         if (autoConnect) {
-            autoConnectJob = serviceScope.launch {
-                // Retry loop: scan → check → connect → if fail, scan again
-                // All in ONE coroutine, no recursive calls
-                var retryCount = 0
-                val maxRetries = 20  // Try up to 20 times (about 3 minutes)
+            // REACTIVE: Watch scan results and connect INSTANTLY when ESSYSTEM found
+            // No 5-second wait. The moment the scanner sees our device, we connect.
+            scanJob = serviceScope.launch {
+                val savedMac = getLastConnectedDevice()
 
-                while (retryCount < maxRetries) {
-                    retryCount++
+                scanner?.discoveredDevices?.collect { devices ->
+                    _discoveredDevices.value = devices
+                    if (devices.isEmpty()) return@collect
 
-                    // Wait for scan results (longer on retries to avoid BLE throttle)
-                    val scanWait = if (retryCount == 1) 5000L else 8000L
-                    delay(scanWait)
+                    // Already connecting/connected? Skip
+                    if (_connectionStatus.value != ConnectionStatus.SCANNING) return@collect
 
-                    // Check if we're still scanning (might have connected via other path)
-                    if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
-                        Log.d(TAG, "✅ Already connected, stopping scan loop")
-                        return@launch
-                    }
-
-                    val devices = _discoveredDevices.value
-                    Log.d(TAG, "📊 Scan attempt $retryCount: Found ${devices.size} devices")
-
-                    if (devices.isEmpty()) {
-                        Log.w(TAG, "⚠️ No devices found (attempt $retryCount/$maxRetries)")
-                        _statusMessage.value = "Searching... (attempt $retryCount)"
-                        // Restart the BLE scan for next iteration
-                        scanner?.stopScan()
-                        _discoveredDevices.value = emptyList()
-                        delay(2000)  // Brief pause before restarting scan
-                        scanner?.startScan()
-                        continue
-                    }
-
-                    // Stop scanning before connecting
-                    scanner?.stopScan()
-
-                    // Log all discovered devices
-                    Log.d(TAG, "📱 DISCOVERED DEVICES:")
-                    devices.forEach { d ->
-                        Log.d(TAG, "  - ${d.name ?: "[NO NAME]"} (${d.device.address}) RSSI: ${d.rssi}")
-                    }
-
-                    // Try saved device first
-                    val lastMac = getLastConnectedDevice()
-                    val savedDevice = if (lastMac != null) {
-                        devices.find { it.device.address.equals(lastMac, ignoreCase = true) }
+                    // Priority 1: Saved device (fastest - we know it works)
+                    val target = if (savedMac != null) {
+                        devices.find { it.device.address.equals(savedMac, ignoreCase = true) }
                     } else null
 
-                    if (savedDevice != null) {
-                        Log.d(TAG, "🎯 Found saved device: ${savedDevice.device.address}")
-                        _statusMessage.value = "Connecting to saved device..."
-                        try {
-                            connect(savedDevice.device)
-                            return@launch
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Saved device connection failed: ${e.message}")
-                        }
+                    // Priority 2: Any ESSYSTEM device
+                    val essystem = target ?: devices
+                        .filter { it.name?.contains("ESSYSTEM", ignoreCase = true) == true }
+                        .maxByOrNull { it.rssi }
+
+                    if (essystem != null) {
+                        Log.d(TAG, "⚡ ESSYSTEM found instantly! Connecting to ${essystem.device.address}")
+                        scanner?.stopScan()
+                        _statusMessage.value = "Connecting..."
+                        connect(essystem.device)
+                        return@collect  // Stop processing further scan results
                     }
-
-                    // Try ESSYSTEM devices by signal strength
-                    val essystemDevices = devices.filter { d ->
-                        d.name?.contains("ESSYSTEM", ignoreCase = true) == true
-                    }.sortedByDescending { it.rssi }
-
-                    if (essystemDevices.isEmpty()) {
-                        Log.w(TAG, "⚠️ No ESSYSTEM found among ${devices.size} devices")
-                        _statusMessage.value = "No ESSYSTEM found. Retrying..."
-                        _discoveredDevices.value = emptyList()
-                        delay(2000)
-                        scanner?.startScan()
-                        continue
-                    }
-
-                    // Try each ESSYSTEM device
-                    var connected = false
-                    for ((index, scannedDevice) in essystemDevices.withIndex()) {
-                        Log.d(TAG, "🔌 Trying ${scannedDevice.name} (${scannedDevice.device.address})")
-                        _statusMessage.value = "Testing ${index + 1}/${essystemDevices.size}..."
-
-                        try {
-                            cleanupBleManager()
-                            bleManager = createBleManager()
-                            bleManager?.connect(scannedDevice.device)
-                                ?.useAutoConnect(false)
-                                ?.retry(1, 100)
-                                ?.timeout(5000)
-                                ?.suspend()
-
-                            Log.d(TAG, "✅ Connected to: ${scannedDevice.device.address}")
-                            saveLastConnectedDevice(scannedDevice.device.address)
-                            _statusMessage.value = "✅ Connected!"
-                            connected = true
-                            break
-                        } catch (e: Exception) {
-                            Log.w(TAG, "❌ Failed: ${e.message}")
-                            cleanupBleManager()
-                            delay(500)
-                        }
-                    }
-
-                    if (connected) return@launch
-
-                    // None worked, restart scan for next retry
-                    _connectionStatus.value = ConnectionStatus.SCANNING
-                    _statusMessage.value = "Retrying scan..."
-                    _discoveredDevices.value = emptyList()
-                    delay(2000)
-                    scanner?.startScan()
                 }
-
-                // Exhausted retries
-                Log.e(TAG, "❌ Failed to connect after $maxRetries attempts")
-                _statusMessage.value = "Connection failed. Tap Scan to retry."
-                _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                updateNotification(ConnectionStatus.DISCONNECTED)
+            }
+        } else {
+            // Just observe without auto-connecting
+            scanJob = serviceScope.launch {
+                scanner?.discoveredDevices?.collect { devices ->
+                    _discoveredDevices.value = devices
+                }
             }
         }
 
-        // Safety timeout
+        // Safety timeout (3 minutes)
         scanTimeoutJob = serviceScope.launch {
-            delay(180000)  // 3 minutes max
+            delay(180000)
             if (_connectionStatus.value == ConnectionStatus.SCANNING) {
                 Log.d(TAG, "Scan timeout after 3 minutes")
                 stopScanning()
@@ -551,34 +456,12 @@ class BluetoothService : Service() {
     private fun autoRescanOnDisconnect() {
         autoRescanJob?.cancel()
         autoRescanJob = serviceScope.launch {
-            delay(3000)  // Wait 3 seconds before rescanning
+            delay(1000)  // 1-second delay (minimal, let BLE stack settle)
             if (_connectionStatus.value == ConnectionStatus.DISCONNECTED && !useMockMode) {
-                Log.d(TAG, "🔄 Auto-rescanning after connection lost...")
-                _statusMessage.value = "Connection lost. Reconnecting..."
-
-                // First try: direct reconnect to saved device (fast, no scanning)
-                val savedMac = getLastConnectedDevice()
-                if (savedMac != null) {
-                    try {
-                        Log.d(TAG, "🎯 Trying direct reconnect to saved device: $savedMac")
-                        _connectionStatus.value = ConnectionStatus.CONNECTING
-                        connectByMacAddress(savedMac)
-                        // Wait for connection result
-                        delay(12000)
-                        if (_connectionStatus.value == ConnectionStatus.CONNECTED) {
-                            Log.d(TAG, "✅ Direct reconnect succeeded!")
-                            return@launch
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Direct reconnect failed: ${e.message}")
-                    }
-                }
-
-                // Fallback: full scan
-                if (_connectionStatus.value != ConnectionStatus.CONNECTED) {
-                    Log.d(TAG, "🔄 Falling back to full scan...")
-                    startScanning(autoConnect = true)
-                }
+                Log.d(TAG, "🔄 Auto-rescanning after disconnect (1s delay)...")
+                _statusMessage.value = "Reconnecting..."
+                // Reactive scan connects INSTANTLY when ESSYSTEM appears
+                startScanning(autoConnect = true)
             }
         }
     }
