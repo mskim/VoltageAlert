@@ -77,9 +77,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Clear latest reading (sensor stopped sending or BLE disconnected).
      * Resets the reading so the next detection triggers a fresh alarm.
+     * Also resets the duplicate filter so the next detection logs fresh.
      */
     fun clearReading() {
         _latestReading.value = null
+        logManager.resetDuplicateFilter()
     }
 
     /**

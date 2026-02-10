@@ -16,6 +16,10 @@ class VoltageLogManager(context: Context) {
     private val dao = database.voltageLogDao()
     private val duplicateFilter = DuplicateSuppressionFilter()
 
+    // Track last logged reading to skip same-second duplicates
+    private var lastLoggedVoltage: VoltageLevel? = null
+    private var lastLoggedSecond: Long = 0L
+
     companion object {
         private const val MAX_LOG_ENTRIES = 99
         private val LOG_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss")
@@ -23,11 +27,19 @@ class VoltageLogManager(context: Context) {
 
     /**
      * Insert a voltage reading into the log.
-     * Applies duplicate suppression and maintains 99-entry limit.
+     * Applies same-second dedup, duplicate suppression, and maintains 99-entry limit.
      *
      * @param reading The voltage reading to log
      */
     suspend fun insertReading(reading: VoltageReading) {
+        // Skip if same voltage in the same second (prevents multiple logs per second)
+        val readingSecond = reading.timestamp.toEpochSecond(java.time.ZoneOffset.UTC)
+        if (reading.voltage == lastLoggedVoltage && readingSecond == lastLoggedSecond) {
+            return
+        }
+        lastLoggedVoltage = reading.voltage
+        lastLoggedSecond = readingSecond
+
         // Check duplicate suppression
         val shouldLog = duplicateFilter.shouldLogReading(reading.voltage)
 
@@ -78,6 +90,17 @@ class VoltageLogManager(context: Context) {
                 )
             }
         }
+    }
+
+    /**
+     * Reset the duplicate suppression filter.
+     * Call this when sensor stops sending (disconnect/timeout) so that
+     * the next detection of the same voltage is logged fresh.
+     */
+    fun resetDuplicateFilter() {
+        duplicateFilter.reset()
+        lastLoggedVoltage = null
+        lastLoggedSecond = 0L
     }
 
     /**

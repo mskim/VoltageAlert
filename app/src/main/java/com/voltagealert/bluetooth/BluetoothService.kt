@@ -100,7 +100,7 @@ class BluetoothService : Service() {
     }
 
     /**
-     * Connect to BLE voltage sensor device.
+     * Connect to BLE voltage sensor device (direct connection from scan results).
      * ST9401-UP uses ESP32-S3 with NimBLE - BLE with "Just Works" pairing (no PIN).
      */
     @SuppressLint("MissingPermission")
@@ -110,16 +110,10 @@ class BluetoothService : Service() {
                 _connectionStatus.value = ConnectionStatus.CONNECTING
                 Log.d(TAG, "Connecting to BLE device: ${device.name} (${device.address})")
 
-                // CRITICAL: Clean up old BLE manager before creating new one
-                // Without this, Android BLE stack holds stale GATT callbacks
-                // and blocks new connections to the same device
                 cleanupBleManager()
-
-                // Create BLE manager
                 bleManager = createBleManager()
 
-                // Connect via BLE GATT
-                // useAutoConnect(false) = direct connection (fast, 5-10 seconds)
+                // useAutoConnect(false) = direct connection (fast, device must be advertising now)
                 bleManager?.connect(device)
                     ?.useAutoConnect(false)
                     ?.retry(3, 100)
@@ -127,12 +121,55 @@ class BluetoothService : Service() {
                     ?.suspend()
 
                 Log.d(TAG, "✓ Connected to BLE device: ${device.address}")
+                saveLastConnectedDevice(device.address)
 
             } catch (e: Exception) {
                 Log.e(TAG, "BLE connection failed", e)
                 _connectionStatus.value = ConnectionStatus.DISCONNECTED
                 _errorCount.value = _errorCount.value + 1
-                // Don't retry here - autoRescanOnDisconnect handles reconnection
+            }
+        }
+    }
+
+    /**
+     * Reconnect to a known device using autoConnect mode.
+     * Uses firmware-level BLE monitoring - connects the INSTANT the sensor appears.
+     * Much faster than app-level scanning for reconnection.
+     */
+    @SuppressLint("MissingPermission")
+    private fun reconnectWithAutoConnect(macAddress: String) {
+        autoRescanJob?.cancel()
+        autoRescanJob = serviceScope.launch {
+            try {
+                _connectionStatus.value = ConnectionStatus.SCANNING
+                _statusMessage.value = "Waiting for sensor..."
+                updateNotification(ConnectionStatus.SCANNING)
+
+                Log.d(TAG, "⚡ autoConnect to saved device: $macAddress (firmware-level monitoring)")
+
+                cleanupBleManager()
+                bleManager = createBleManager()
+
+                val bluetoothManager = getSystemService(android.content.Context.BLUETOOTH_SERVICE) as android.bluetooth.BluetoothManager
+                val device = bluetoothManager.adapter.getRemoteDevice(macAddress)
+
+                // autoConnect(true) = firmware monitors for device, connects immediately when found
+                // No app-level scanning needed - this runs at the BLE chipset level
+                bleManager?.connect(device)
+                    ?.useAutoConnect(true)
+                    ?.retry(2, 200)
+                    ?.suspend()
+
+                Log.d(TAG, "✓ Auto-reconnected to: $macAddress")
+                saveLastConnectedDevice(macAddress)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "autoConnect failed: ${e.message}")
+                if (_connectionStatus.value != ConnectionStatus.CONNECTED) {
+                    Log.d(TAG, "🔄 Falling back to active scan...")
+                    _connectionStatus.value = ConnectionStatus.DISCONNECTED
+                    startScanning(autoConnect = true)
+                }
             }
         }
     }
@@ -402,6 +439,8 @@ class BluetoothService : Service() {
         autoConnectJob = null
         scanTimeoutJob?.cancel()
         scanTimeoutJob = null
+        autoRescanJob?.cancel()
+        autoRescanJob = null
     }
 
     /**
@@ -447,21 +486,26 @@ class BluetoothService : Service() {
     }
 
     /**
-     * Auto-rescan when BLE connection drops.
-     * Worker moves between sensors - when one disconnects, scan for the next one.
-     * Creates infinite cycle: scan → connect → poll → disconnect → rescan
+     * Auto-reconnect when BLE connection drops.
+     * Uses autoConnect (firmware-level) if we have a saved device, otherwise active scan.
      */
     private var autoRescanJob: Job? = null
 
     private fun autoRescanOnDisconnect() {
         autoRescanJob?.cancel()
         autoRescanJob = serviceScope.launch {
-            delay(1000)  // 1-second delay (minimal, let BLE stack settle)
+            delay(300)  // 300ms - minimal delay for BLE stack cleanup
             if (_connectionStatus.value == ConnectionStatus.DISCONNECTED && !useMockMode) {
-                Log.d(TAG, "🔄 Auto-rescanning after disconnect (1s delay)...")
-                _statusMessage.value = "Reconnecting..."
-                // Reactive scan connects INSTANTLY when ESSYSTEM appears
-                startScanning(autoConnect = true)
+                val savedMac = getLastConnectedDevice()
+                if (savedMac != null) {
+                    // Known device: use autoConnect (firmware-level, fastest)
+                    reconnectWithAutoConnect(savedMac)
+                } else {
+                    // First time: use active scanning
+                    Log.d(TAG, "🔄 No saved device, using active scan...")
+                    _statusMessage.value = "Reconnecting..."
+                    startScanning(autoConnect = true)
+                }
             }
         }
     }
