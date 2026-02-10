@@ -117,6 +117,10 @@ class BluetoothService : Service() {
                     onConnectionStatusChanged = { status ->
                         _connectionStatus.value = status
                         updateNotification(status)
+                        // Auto-rescan when connection drops (worker moved away from sensor)
+                        if (status == ConnectionStatus.DISCONNECTED && !useMockMode) {
+                            autoRescanOnDisconnect()
+                        }
                     },
                     onError = {
                         _errorCount.value = _errorCount.value + 1
@@ -380,6 +384,10 @@ class BluetoothService : Service() {
                                 onConnectionStatusChanged = { status ->
                                     _connectionStatus.value = status
                                     updateNotification(status)
+                                    // Auto-rescan when connection drops (worker moved away from sensor)
+                                    if (status == ConnectionStatus.DISCONNECTED && !useMockMode) {
+                                        autoRescanOnDisconnect()
+                                    }
                                 },
                                 onError = {
                                     _errorCount.value = _errorCount.value + 1
@@ -496,6 +504,25 @@ class BluetoothService : Service() {
     private fun getLastConnectedDevice(): String? {
         return getSharedPreferences("VoltageAlert", MODE_PRIVATE)
             .getString("last_connected_mac", null)
+    }
+
+    /**
+     * Auto-rescan when BLE connection drops.
+     * Worker moves between sensors - when one disconnects, scan for the next one.
+     * Creates infinite cycle: scan → connect → poll → disconnect → rescan
+     */
+    private var autoRescanJob: Job? = null
+
+    private fun autoRescanOnDisconnect() {
+        autoRescanJob?.cancel()
+        autoRescanJob = serviceScope.launch {
+            delay(3000)  // Wait 3 seconds before rescanning
+            if (_connectionStatus.value == ConnectionStatus.DISCONNECTED && !useMockMode) {
+                Log.d(TAG, "🔄 Auto-rescanning after connection lost (worker moved away)...")
+                _statusMessage.value = "Connection lost. Scanning for next sensor..."
+                startScanning(autoConnect = true)
+            }
+        }
     }
 
     private fun createNotificationChannel() {

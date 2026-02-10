@@ -167,17 +167,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun testAlert(voltageLevel: com.voltagealert.models.VoltageLevel) {
         android.util.Log.d("MainActivity", "🧪 TEST BUTTON CLICKED: $voltageLevel")
-        // Create reading - the observer will trigger the alert
-        val reading = com.voltagealert.models.VoltageReading(
-            voltage = voltageLevel,
-            timestamp = java.time.LocalDateTime.now(),
-            sequenceNumber = 0,
-            rawBytes = byteArrayOf()
-        )
-        android.util.Log.d("MainActivity", "🧪 Calling viewModel.updateReading with: $reading")
-        // Update reading - this will trigger the alert through the observer
-        viewModel.updateReading(reading)
-        android.util.Log.d("MainActivity", "🧪 viewModel.updateReading completed")
+        // Trigger alert directly without logging
+        alertCoordinator.triggerAlert(voltageLevel)
     }
 
     private fun observeViewModel() {
@@ -210,11 +201,12 @@ class MainActivity : AppCompatActivity() {
                             android.util.Log.d("MainActivity", "📱 UI updating voltage display: $voltageText")
                             binding.tvCurrentVoltage.text = voltageText
 
-                            // Change card color based on danger level
-                            val cardColor = if (reading.voltage.isDangerous) {
-                                ContextCompat.getColor(this@MainActivity, R.color.danger_red)
-                            } else {
-                                ContextCompat.getColor(this@MainActivity, R.color.safe_green)
+                            // Change card color: yellow for low voltage, red for high voltage
+                            val cardColor = when (reading.voltage) {
+                                VoltageLevel.VOLTAGE_220V, VoltageLevel.VOLTAGE_380V ->
+                                    ContextCompat.getColor(this@MainActivity, R.color.warning_yellow)
+                                else ->
+                                    ContextCompat.getColor(this@MainActivity, R.color.danger_red)
                             }
                             binding.voltageCard.setStrokeColor(cardColor)
 
