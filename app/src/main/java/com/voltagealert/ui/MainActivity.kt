@@ -223,6 +223,12 @@ class MainActivity : AppCompatActivity() {
                             // Reset to red when no voltage
                             binding.voltageCard.setStrokeColor(ContextCompat.getColor(this@MainActivity, R.color.danger_red))
                             lastAlertedVoltage = null
+
+                            // Auto-stop any active alert (sensor stopped sending)
+                            if (alertCoordinator.isAlertActive()) {
+                                Log.d("MainActivity", "🔇 Auto-stopping alert (no voltage data)")
+                                alertCoordinator.stopAllAlerts()
+                            }
                         }
                     }
                 }

@@ -47,6 +47,7 @@ class BluetoothService : Service() {
     private var useMockMode = false
     private var scanner: BluetoothScanner? = null
     private var scanJob: Job? = null
+    private var readingTimeoutJob: Job? = null
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -106,6 +107,11 @@ class BluetoothService : Service() {
                 _connectionStatus.value = ConnectionStatus.CONNECTING
                 Log.d(TAG, "Connecting to BLE device: ${device.name} (${device.address})")
 
+                // CRITICAL: Clean up old BLE manager before creating new one
+                // Without this, Android BLE stack holds stale GATT callbacks
+                // and blocks new connections to the same device
+                cleanupBleManager()
+
                 // Create BLE manager
                 bleManager = SensorBleManager(
                     context = this@BluetoothService,
@@ -113,13 +119,27 @@ class BluetoothService : Service() {
                         Log.d(TAG, "🔄 Emitting reading to UI: ${reading.voltage}")
                         _latestReading.value = reading
                         _errorCount.value = 0
+
+                        // Restart 2-second reading timeout
+                        // When sensor stops sending, this fires and clears the reading
+                        readingTimeoutJob?.cancel()
+                        readingTimeoutJob = serviceScope.launch {
+                            delay(2000)
+                            Log.d(TAG, "⏱️ Reading timeout - sensor stopped sending, clearing reading")
+                            _latestReading.value = null
+                        }
                     },
                     onConnectionStatusChanged = { status ->
                         _connectionStatus.value = status
                         updateNotification(status)
-                        // Auto-rescan when connection drops (worker moved away from sensor)
-                        if (status == ConnectionStatus.DISCONNECTED && !useMockMode) {
-                            autoRescanOnDisconnect()
+                        if (status == ConnectionStatus.DISCONNECTED) {
+                            // Clear reading immediately on disconnect
+                            readingTimeoutJob?.cancel()
+                            _latestReading.value = null
+                            Log.d(TAG, "🔴 BLE disconnected - cleared reading")
+                            if (!useMockMode) {
+                                autoRescanOnDisconnect()
+                            }
                         }
                     },
                     onError = {
@@ -128,9 +148,10 @@ class BluetoothService : Service() {
                 )
 
                 // Connect via BLE GATT
-                // NimBLE "Just Works" pairing - no PIN required, automatic pairing
+                // useAutoConnect(false) = direct connection (fast, 5-10 seconds)
+                // useAutoConnect(true)  = passive scanning (slow, can take 30+ minutes!)
                 bleManager?.connect(device)
-                    ?.useAutoConnect(true)
+                    ?.useAutoConnect(false)
                     ?.retry(3, 100)
                     ?.timeout(10000)
                     ?.suspend()
@@ -153,12 +174,36 @@ class BluetoothService : Service() {
     }
 
     /**
+     * Properly clean up old BLE manager to release GATT resources.
+     * Without this, Android BLE stack blocks reconnection to the same device.
+     */
+    private suspend fun cleanupBleManager() {
+        bleManager?.let { oldManager ->
+            Log.d(TAG, "🧹 Cleaning up old BLE manager...")
+            try {
+                withTimeout(2000) {
+                    oldManager.disconnect().suspend()
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Old manager disconnect: ${e.message}")
+            }
+            try {
+                oldManager.close()
+            } catch (e: Exception) {
+                Log.d(TAG, "Old manager close: ${e.message}")
+            }
+            bleManager = null
+            Log.d(TAG, "🧹 Old BLE manager cleaned up")
+        }
+    }
+
+    /**
      * Disconnect from the current BLE device.
      */
     fun disconnect() {
         serviceScope.launch {
-            bleManager?.disconnect()?.suspend()
-            bleManager = null
+            readingTimeoutJob?.cancel()
+            cleanupBleManager()
             stopMockMode()
             _connectionStatus.value = ConnectionStatus.DISCONNECTED
             _latestReading.value = null
@@ -373,6 +418,9 @@ class BluetoothService : Service() {
                         try {
                             _connectionStatus.value = ConnectionStatus.CONNECTING
 
+                            // Clean up any existing BLE manager first
+                            cleanupBleManager()
+
                             // Try to connect with shorter timeout for faster iteration
                             bleManager = SensorBleManager(
                                 context = this@BluetoothService,
@@ -380,13 +428,24 @@ class BluetoothService : Service() {
                                     Log.d(TAG, "🔄 Emitting reading to UI: ${reading.voltage}")
                                     _latestReading.value = reading
                                     _errorCount.value = 0
+
+                                    // Restart 2-second reading timeout
+                                    readingTimeoutJob?.cancel()
+                                    readingTimeoutJob = serviceScope.launch {
+                                        delay(2000)
+                                        Log.d(TAG, "⏱️ Reading timeout - sensor stopped sending, clearing reading")
+                                        _latestReading.value = null
+                                    }
                                 },
                                 onConnectionStatusChanged = { status ->
                                     _connectionStatus.value = status
                                     updateNotification(status)
-                                    // Auto-rescan when connection drops (worker moved away from sensor)
-                                    if (status == ConnectionStatus.DISCONNECTED && !useMockMode) {
-                                        autoRescanOnDisconnect()
+                                    if (status == ConnectionStatus.DISCONNECTED) {
+                                        readingTimeoutJob?.cancel()
+                                        _latestReading.value = null
+                                        if (!useMockMode) {
+                                            autoRescanOnDisconnect()
+                                        }
                                     }
                                 },
                                 onError = {
@@ -395,7 +454,7 @@ class BluetoothService : Service() {
                             )
 
                             bleManager?.connect(scannedDevice.device)
-                                ?.useAutoConnect(false) // Don't auto-reconnect during discovery
+                                ?.useAutoConnect(false) // Direct connection (fast)
                                 ?.retry(1, 100)
                                 ?.timeout(5000) // 5 second timeout
                                 ?.suspend()
@@ -481,8 +540,10 @@ class BluetoothService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        readingTimeoutJob?.cancel()
+        autoRescanJob?.cancel()
         serviceScope.launch {
-            bleManager?.disconnect()?.suspend()
+            cleanupBleManager()
         }
         Log.d(TAG, "Service destroyed")
     }
@@ -580,6 +641,8 @@ class BluetoothService : Service() {
     ) : BleManager(context) {
 
         private var dataCharacteristic: BluetoothGattCharacteristic? = null
+        // Track when last NOTIFY was received to detect stale READ data
+        private var lastNotifyTime = 0L
 
         override fun getMinLogPriority(): Int = Log.VERBOSE
 
@@ -641,7 +704,8 @@ class BluetoothService : Service() {
 
                         val reading = SensorDataParser.parsePacket(bytes)
                         if (reading != null) {
-                            Log.d(TAG, "✅ Parsed voltage: ${reading.voltage}")
+                            Log.d(TAG, "✅ Parsed voltage from NOTIFY: ${reading.voltage}")
+                            lastNotifyTime = System.currentTimeMillis()
                             lastReadingTime = System.currentTimeMillis()
                             onReadingReceived(reading)
                         } else {
@@ -691,10 +755,17 @@ class BluetoothService : Service() {
 
                                 val reading = SensorDataParser.parsePacket(bytes)
                                 if (reading != null) {
-                                    Log.d(TAG, "✅ Parsed voltage from READ: ${reading.voltage}")
-                                    lastReadingTime = System.currentTimeMillis()
-                                    onReadingReceived(reading)
-                                    consecutiveErrors = 0  // Reset error counter on success
+                                    // Only emit READ data if NOTIFY was recent (within 3 seconds)
+                                    // This prevents stale cached data from keeping the alarm alive
+                                    val timeSinceNotify = System.currentTimeMillis() - lastNotifyTime
+                                    if (timeSinceNotify < 3000) {
+                                        Log.d(TAG, "✅ Parsed voltage from READ: ${reading.voltage} (notify ${timeSinceNotify}ms ago)")
+                                        lastReadingTime = System.currentTimeMillis()
+                                        onReadingReceived(reading)
+                                        consecutiveErrors = 0  // Reset error counter on success
+                                    } else {
+                                        Log.d(TAG, "⏭️ Skipping stale READ data (last notify ${timeSinceNotify}ms ago)")
+                                    }
                                 }
                             }
                         }.fail { _, status ->

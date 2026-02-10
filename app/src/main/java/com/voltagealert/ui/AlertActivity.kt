@@ -6,11 +6,15 @@ import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import java.util.Locale
 import com.voltagealert.R
 import com.voltagealert.alert.AlertCoordinator
 import com.voltagealert.databinding.ActivityAlertBinding
 import com.voltagealert.models.VoltageLevel
+import kotlinx.coroutines.launch
 
 /**
  * Full-screen alert activity shown when dangerous voltage is detected.
@@ -85,6 +89,18 @@ class AlertActivity : AppCompatActivity() {
         // Dismiss button
         binding.btnDismiss.setOnClickListener {
             dismissAlert()
+        }
+
+        // Auto-dismiss when AlertCoordinator signals (sensor stopped sending)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                alertCoordinator.shouldDismiss.collect { shouldDismiss ->
+                    if (shouldDismiss) {
+                        Log.d("AlertActivity", "Auto-dismissing (sensor stopped sending)")
+                        dismissAlert()
+                    }
+                }
+            }
         }
     }
 

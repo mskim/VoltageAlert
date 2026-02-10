@@ -6,6 +6,9 @@ import android.os.PowerManager
 import android.util.Log
 import com.voltagealert.models.VoltageLevel
 import com.voltagealert.ui.AlertActivity
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Coordinates all alert modes: visual (full-screen), audio (siren), and haptic (vibration).
@@ -17,6 +20,10 @@ class AlertCoordinator private constructor(private val context: Context) {
     private val soundGenerator = AlertSoundGenerator()
     private val hapticManager = HapticAlertManager(context)
     private var wakeLock: PowerManager.WakeLock? = null
+
+    // Signal to auto-dismiss AlertActivity when alarm stops programmatically
+    private val _shouldDismiss = MutableStateFlow(false)
+    val shouldDismiss: StateFlow<Boolean> = _shouldDismiss.asStateFlow()
 
     companion object {
         private const val TAG = "AlertCoordinator"
@@ -45,6 +52,9 @@ class AlertCoordinator private constructor(private val context: Context) {
 
         Log.i(TAG, "Triggering alert for voltage: $voltage")
 
+        // Reset dismiss signal
+        _shouldDismiss.value = false
+
         // Acquire wake lock to keep screen on
         acquireWakeLock()
 
@@ -71,6 +81,9 @@ class AlertCoordinator private constructor(private val context: Context) {
         soundGenerator.stop()
         hapticManager.stop()
         releaseWakeLock()
+
+        // Signal AlertActivity to auto-dismiss
+        _shouldDismiss.value = true
     }
 
     /**

@@ -160,7 +160,7 @@
                             android:layout_weight="1"
                             android:layout_marginEnd="4dp"
                             android:text="220V"
-                            android:backgroundTint="#4CAF50"
+                            android:backgroundTint="#FBC02D"
                             app:cornerRadius="8dp" />
 
                         <com.google.android.material.button.MaterialButton
