@@ -25,6 +25,10 @@
         android:name="android.hardware.bluetooth_le"
         android:required="true" />
 
+    <!-- Storage permission for saving logs to /storage/emulated/0/HVPA/ -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <!-- Other permissions -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

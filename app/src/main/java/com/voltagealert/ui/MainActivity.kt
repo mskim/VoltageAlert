@@ -63,6 +63,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val storagePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            performSaveLogs()
+        } else {
+            Toast.makeText(this, "Storage permission required to save logs", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as BluetoothService.LocalBinder
@@ -128,15 +138,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupClickListeners() {
         binding.btnSaveLogs.setOnClickListener {
-            viewModel.saveLogs { path ->
-                runOnUiThread {
-                    if (path != null) {
-                        Toast.makeText(this, getString(R.string.logs_saved, path), Toast.LENGTH_LONG).show()
-                    } else {
-                        Toast.makeText(this, getString(R.string.logs_empty), Toast.LENGTH_SHORT).show()
-                    }
-                }
+            // Check storage permission for Android 9 and below (API <= 28)
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                return@setOnClickListener
             }
+            performSaveLogs()
         }
 
         binding.btnClearLogs.setOnClickListener {
@@ -182,6 +191,18 @@ class MainActivity : AppCompatActivity() {
         android.util.Log.d("MainActivity", "🧪 TEST BUTTON CLICKED: $voltageLevel")
         // Trigger alert directly without logging
         alertCoordinator.triggerAlert(voltageLevel)
+    }
+
+    private fun performSaveLogs() {
+        viewModel.saveLogs { path ->
+            runOnUiThread {
+                if (path != null) {
+                    Toast.makeText(this, getString(R.string.logs_saved, path), Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, getString(R.string.logs_empty), Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun observeViewModel() {

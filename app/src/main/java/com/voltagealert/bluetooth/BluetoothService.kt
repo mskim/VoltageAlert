@@ -381,6 +381,14 @@ class BluetoothService : Service() {
                     Log.d(TAG, "⏱️ Broadcast timeout - sensor stopped")
                     _latestReading.value = null
                     stopAlertFromService()
+                    // Flush BLE scan cache immediately when sensor stops broadcasting.
+                    // Samsung/Android caches scan results and reduces callback frequency
+                    // for known devices after ~6 results. Flushing here ensures the NEXT
+                    // voltage detection is reported instantly (no 6th-detection delay).
+                    if (scanner?.isScanning?.value == true) {
+                        scanner?.flushScanCache()
+                        Log.d(TAG, "🔄 Flushed scan cache on sensor idle")
+                    }
                     // Revert status to scanning (scan is still running)
                     if (scanner?.isScanning?.value == true) {
                         _connectionStatus.value = ConnectionStatus.SCANNING

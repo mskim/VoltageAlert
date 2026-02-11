@@ -6,6 +6,7 @@ import com.voltagealert.models.VoltageReading
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import android.os.Environment
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -115,9 +116,9 @@ class VoltageLogManager(private val context: Context) {
     }
 
     /**
-     * Save all visible logs to a file in the app's external files directory.
+     * Save all visible logs to a file in the phone's root storage.
      * File format: HVPA#yyyyMMdd_HHmmss.log
-     * Location: /storage/emulated/0/Android/data/com.voltagealert/files/
+     * Location: /storage/emulated/0/HVPA/
      *
      * @return The saved file path, or null if failed
      */
@@ -128,14 +129,26 @@ class VoltageLogManager(private val context: Context) {
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
         val fileName = "HVPA#$timestamp.log"
 
-        val appDir = context.getExternalFilesDir(null) ?: return null
-        val file = File(appDir, fileName)
+        // Save to /storage/emulated/0/HVPA/
+        val hvpaDir = File(Environment.getExternalStorageDirectory(), "HVPA")
+        if (!hvpaDir.exists()) {
+            hvpaDir.mkdirs()
+        }
+        val file = File(hvpaDir, fileName)
 
         return try {
             file.writeText(entries.joinToString("\n") { it.getFormattedDisplay() })
             file.absolutePath
         } catch (e: Exception) {
-            null
+            // Fallback to app-specific directory if root storage fails
+            val fallbackDir = context.getExternalFilesDir(null) ?: return null
+            val fallbackFile = File(fallbackDir, fileName)
+            try {
+                fallbackFile.writeText(entries.joinToString("\n") { it.getFormattedDisplay() })
+                fallbackFile.absolutePath
+            } catch (e2: Exception) {
+                null
+            }
         }
     }
 
