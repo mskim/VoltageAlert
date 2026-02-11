@@ -49,6 +49,7 @@ class BluetoothService : Service() {
     private var scanner: BluetoothScanner? = null
     private var scanJob: Job? = null
     private var broadcastJob: Job? = null
+    private var scanCacheFlushJob: Job? = null
     private var autoConnectJob: Job? = null
     private var scanTimeoutJob: Job? = null
     private var readingTimeoutJob: Job? = null
@@ -390,6 +391,20 @@ class BluetoothService : Service() {
             }
         }
 
+        // Periodic BLE scan cache flush (every 20 seconds).
+        // Samsung/Android reduces scan callback frequency for known devices over time.
+        // Flushing resets this so every advertisement is reported promptly.
+        // 20s interval = max 1-2 flushes per 30s, well under Android's 5-per-30s limit.
+        scanCacheFlushJob?.cancel()
+        scanCacheFlushJob = serviceScope.launch {
+            while (true) {
+                delay(20000)
+                if (scanner?.isScanning?.value == true) {
+                    scanner?.flushScanCache()
+                }
+            }
+        }
+
         // Track discovered devices for UI
         scanJob = serviceScope.launch {
             scanner?.discoveredDevices?.collect { devices ->
@@ -410,6 +425,8 @@ class BluetoothService : Service() {
         scanJob = null
         broadcastJob?.cancel()
         broadcastJob = null
+        scanCacheFlushJob?.cancel()
+        scanCacheFlushJob = null
         autoConnectJob?.cancel()
         autoConnectJob = null
         scanTimeoutJob?.cancel()
@@ -435,6 +452,7 @@ class BluetoothService : Service() {
         super.onDestroy()
         readingTimeoutJob?.cancel()
         broadcastJob?.cancel()
+        scanCacheFlushJob?.cancel()
         autoRescanJob?.cancel()
         serviceScope.launch {
             cleanupBleManager()

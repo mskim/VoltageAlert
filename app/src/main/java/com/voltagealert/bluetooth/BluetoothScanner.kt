@@ -48,7 +48,7 @@ class BluetoothScanner(private val context: Context) {
     private val deviceMap = mutableMapOf<String, ScannedDevice>()
 
     // Broadcast mode: emits voltage readings detected from advertisement data
-    private val _broadcastReading = MutableSharedFlow<VoltageReading>(extraBufferCapacity = 1)
+    private val _broadcastReading = MutableSharedFlow<VoltageReading>(extraBufferCapacity = 64)
     val broadcastReading: SharedFlow<VoltageReading> = _broadcastReading.asSharedFlow()
 
     companion object {
@@ -168,9 +168,14 @@ class BluetoothScanner(private val context: Context) {
         try {
             Log.d(TAG, "Starting BLE scan for voltage sensors...")
 
-            // Build BLE scan settings for optimal discovery
+            // Aggressive scan settings: report every advertisement, no deduplication.
+            // Without MATCH_MODE_AGGRESSIVE, Samsung devices reduce callback frequency
+            // for known devices after ~6 scan results (BLE cache optimization).
             val scanSettings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+                .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
+                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
                 .build()
 
             // Filter for ESSYSTEM device only (confirmed device name)
@@ -205,7 +210,6 @@ class BluetoothScanner(private val context: Context) {
         }
 
         try {
-            // Stop BLE scan
             bleScanner?.stopScan(scanCallback)
             _isScanning.value = false
             Log.d(TAG, "BLE scan stopped")
@@ -213,6 +217,39 @@ class BluetoothScanner(private val context: Context) {
             Log.e(TAG, "Missing Bluetooth permissions", e)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to stop BLE scan", e)
+        }
+    }
+
+    /**
+     * Flush BLE scan cache by briefly stopping and restarting the scan.
+     * Samsung/Android caches scan results and reduces callback frequency for known devices.
+     * This forces Android to treat the next advertisement as a fresh discovery.
+     * Must be called infrequently (max 4 times per 30s to stay under Android's 5-per-30s limit).
+     */
+    @SuppressLint("MissingPermission")
+    fun flushScanCache() {
+        if (!_isScanning.value) return
+
+        try {
+            bleScanner?.flushPendingScanResults(scanCallback)
+            Log.d(TAG, "🔄 Flushed BLE scan cache")
+        } catch (e: Exception) {
+            Log.d(TAG, "flushPendingScanResults not supported, restarting scan")
+            // Fallback: quick stop+start to clear the cache
+            bleScanner?.stopScan(scanCallback)
+            val scanSettings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+                .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
+                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+                .build()
+            val scanFilters = listOf(
+                ScanFilter.Builder()
+                    .setDeviceName("ESSYSTEM")
+                    .build()
+            )
+            bleScanner?.startScan(scanFilters, scanSettings, scanCallback)
+            Log.d(TAG, "🔄 Scan restarted to flush cache")
         }
     }
 

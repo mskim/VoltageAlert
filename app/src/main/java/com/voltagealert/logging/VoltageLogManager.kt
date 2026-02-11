@@ -1,7 +1,6 @@
 package com.voltagealert.logging
 
 import android.content.Context
-import android.os.Environment
 import com.voltagealert.models.VoltageLevel
 import com.voltagealert.models.VoltageReading
 import kotlinx.coroutines.flow.Flow
@@ -15,7 +14,7 @@ import java.time.format.DateTimeFormatter
  * Business logic for managing voltage logs.
  * Handles duplicate suppression, 99-entry limit, and formatting.
  */
-class VoltageLogManager(context: Context) {
+class VoltageLogManager(private val context: Context) {
     private val database = VoltageLogDatabase.getInstance(context)
     private val dao = database.voltageLogDao()
     private val duplicateFilter = DuplicateSuppressionFilter()
@@ -116,8 +115,9 @@ class VoltageLogManager(context: Context) {
     }
 
     /**
-     * Save all visible logs to a file in the Downloads directory.
+     * Save all visible logs to a file in the app's external files directory.
      * File format: HVPA#yyyyMMdd_HHmmss.log
+     * Location: /storage/emulated/0/Android/data/com.voltagealert/files/
      *
      * @return The saved file path, or null if failed
      */
@@ -128,8 +128,8 @@ class VoltageLogManager(context: Context) {
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
         val fileName = "HVPA#$timestamp.log"
 
-        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val file = File(downloadsDir, fileName)
+        val appDir = context.getExternalFilesDir(null) ?: return null
+        val file = File(appDir, fileName)
 
         return try {
             file.writeText(entries.joinToString("\n") { it.getFormattedDisplay() })
