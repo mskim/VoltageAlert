@@ -92,4 +92,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             logManager.clearAllLogs()
         }
     }
+
+    /**
+     * Save logs to file. Returns file path via callback.
+     */
+    fun saveLogs(onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val path = logManager.saveLogsToFile()
+            onResult(path)
+        }
+    }
 }

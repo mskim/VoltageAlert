@@ -21,6 +21,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import android.widget.Toast
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.voltagealert.R
 import com.voltagealert.alert.AlertCoordinator
@@ -126,6 +127,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
+        binding.btnSaveLogs.setOnClickListener {
+            viewModel.saveLogs { path ->
+                runOnUiThread {
+                    if (path != null) {
+                        Toast.makeText(this, getString(R.string.logs_saved, path), Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(this, getString(R.string.logs_empty), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+
         binding.btnClearLogs.setOnClickListener {
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clear_logs)

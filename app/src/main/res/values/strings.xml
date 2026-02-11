@@ -25,6 +25,10 @@
     <string name="no_voltage_detected">No voltage detected</string>
     <string name="event_log">Event Log</string>
     <string name="clear_logs">Clear Logs</string>
+    <string name="save_logs">Save Logs</string>
+    <string name="logs_saved">Log saved: %s</string>
+    <string name="logs_save_failed">Failed to save log</string>
+    <string name="logs_empty">No logs to save</string>
     <string name="no_logs">No events recorded</string>
     <string name="settings">Settings</string>
     <string name="test_alerts">Test Alerts</string>

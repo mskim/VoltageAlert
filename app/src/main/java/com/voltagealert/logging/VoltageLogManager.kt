@@ -1,10 +1,14 @@
 package com.voltagealert.logging
 
 import android.content.Context
+import android.os.Environment
 import com.voltagealert.models.VoltageLevel
 import com.voltagealert.models.VoltageReading
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.io.File
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
@@ -109,6 +113,30 @@ class VoltageLogManager(context: Context) {
     suspend fun clearAllLogs() {
         dao.clearAll()
         duplicateFilter.reset()
+    }
+
+    /**
+     * Save all visible logs to a file in the Downloads directory.
+     * File format: HVPA#yyyyMMdd_HHmmss.log
+     *
+     * @return The saved file path, or null if failed
+     */
+    suspend fun saveLogsToFile(): String? {
+        val entries = getVisibleLogs().first()
+        if (entries.isEmpty()) return null
+
+        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+        val fileName = "HVPA#$timestamp.log"
+
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val file = File(downloadsDir, fileName)
+
+        return try {
+            file.writeText(entries.joinToString("\n") { it.getFormattedDisplay() })
+            file.absolutePath
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /**

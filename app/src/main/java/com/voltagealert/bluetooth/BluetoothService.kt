@@ -323,14 +323,25 @@ class BluetoothService : Service() {
 
     /**
      * Start scanning for voltage sensor devices.
-     * REACTIVE: Connects INSTANTLY when ESSYSTEM appears in scan results.
-     * No waiting for scan accumulation - safety-critical speed.
+     * Broadcast-only mode: reads voltage data directly from BLE advertisements.
+     * No GATT connection needed - scan → read → alarm in 100-500ms.
      */
     fun startScanning(autoConnect: Boolean = true) {
-        Log.d(TAG, "Starting Bluetooth scan (autoConnect=$autoConnect)")
+        // If scan is already running, don't restart (avoids Android scan throttling)
+        if (scanner?.isScanning?.value == true && broadcastJob?.isActive == true) {
+            Log.d(TAG, "⚡ Scan already running - skipping restart")
+            return
+        }
 
-        // Cancel ALL previous scanning/connecting coroutines
-        stopScanning()
+        Log.d(TAG, "Starting BLE broadcast scan")
+
+        // Cancel previous coroutines (but minimize scan stop/start cycles)
+        scanJob?.cancel()
+        scanJob = null
+        broadcastJob?.cancel()
+        broadcastJob = null
+        scanTimeoutJob?.cancel()
+        scanTimeoutJob = null
 
         if (useMockMode) {
             stopMockMode()
@@ -341,109 +352,52 @@ class BluetoothService : Service() {
         _discoveredDevices.value = emptyList()
         updateNotification(ConnectionStatus.SCANNING)
 
-        scanner?.startScan()
+        // Only stop/start the actual BLE scan if it's not already running
+        if (scanner?.isScanning?.value != true) {
+            scanner?.startScan()
+        }
 
         // Broadcast mode: collect voltage readings from advertisement data.
-        // This provides instant detection (100-500ms) without GATT connection.
-        // Works alongside GATT connection - whichever delivers data first wins.
-        broadcastJob?.cancel()
+        // No GATT connection. Scan → read advertisement → alarm (100-500ms).
         broadcastJob = serviceScope.launch {
             scanner?.broadcastReading?.collect { reading ->
-                Log.d(TAG, "⚡ BROADCAST reading: ${reading.voltage} - instant alarm!")
+                Log.d(TAG, "⚡ BROADCAST: ${reading.voltage}")
                 _latestReading.value = reading
                 _errorCount.value = 0
 
-                // Restart reading timeout (same as GATT path)
+                // Update status on first broadcast received
+                if (_connectionStatus.value == ConnectionStatus.SCANNING) {
+                    _connectionStatus.value = ConnectionStatus.CONNECTED
+                    _statusMessage.value = "Monitoring"
+                    updateNotification(ConnectionStatus.CONNECTED)
+                }
+
+                // Restart 2-second reading timeout
+                // When sensor stops broadcasting, this clears the reading + stops alarm
                 readingTimeoutJob?.cancel()
                 readingTimeoutJob = serviceScope.launch {
                     delay(2000)
-                    Log.d(TAG, "⏱️ Broadcast reading timeout - sensor stopped sending")
+                    Log.d(TAG, "⏱️ Broadcast timeout - sensor stopped")
                     _latestReading.value = null
                     stopAlertFromService()
+                    // Revert status to scanning (scan is still running)
+                    if (scanner?.isScanning?.value == true) {
+                        _connectionStatus.value = ConnectionStatus.SCANNING
+                        _statusMessage.value = "Scanning..."
+                        updateNotification(ConnectionStatus.SCANNING)
+                    }
                 }
             }
         }
 
-        if (autoConnect) {
-            // With broadcast mode, GATT connection is only needed as fallback
-            // for old firmware that doesn't include voltage data in advertisements.
-            // Watch scan results: if broadcast readings arrive, skip GATT entirely.
-            // If no broadcast readings after 3 seconds, fall back to GATT connect.
-            scanJob = serviceScope.launch {
-                val savedMac = getLastConnectedDevice()
-                var broadcastReceived = false
-
-                // Listen for broadcast readings to know if new firmware is active
-                val broadcastListenerJob = launch {
-                    scanner?.broadcastReading?.collect {
-                        broadcastReceived = true
-                        // Broadcast mode works - no GATT needed
-                        if (_connectionStatus.value == ConnectionStatus.SCANNING) {
-                            _connectionStatus.value = ConnectionStatus.CONNECTED
-                            _statusMessage.value = "Monitoring (broadcast)"
-                            updateNotification(ConnectionStatus.CONNECTED)
-                        }
-                    }
-                }
-
-                scanner?.discoveredDevices?.collect { devices ->
-                    _discoveredDevices.value = devices
-                    if (devices.isEmpty()) return@collect
-
-                    // Already connecting/connected? Skip
-                    if (_connectionStatus.value != ConnectionStatus.SCANNING) return@collect
-
-                    // If broadcast mode is working, don't GATT connect
-                    if (broadcastReceived) {
-                        Log.d(TAG, "⚡ Broadcast mode active - skipping GATT connection")
-                        return@collect
-                    }
-
-                    // Priority 1: Saved device (fastest - we know it works)
-                    val target = if (savedMac != null) {
-                        devices.find { it.device.address.equals(savedMac, ignoreCase = true) }
-                    } else null
-
-                    // Priority 2: Any ESSYSTEM device
-                    val essystem = target ?: devices
-                        .filter { it.name?.contains("ESSYSTEM", ignoreCase = true) == true }
-                        .maxByOrNull { it.rssi }
-
-                    if (essystem != null) {
-                        // Wait briefly to see if broadcast data arrives first
-                        delay(1000)
-                        if (broadcastReceived) {
-                            Log.d(TAG, "⚡ Broadcast data arrived - skipping GATT")
-                            return@collect
-                        }
-
-                        // No broadcast data - old firmware, use GATT fallback
-                        Log.d(TAG, "📡 No broadcast data - GATT fallback to ${essystem.device.address}")
-                        _statusMessage.value = "Connecting (GATT)..."
-                        connect(essystem.device)
-                        return@collect
-                    }
-                }
-            }
-        } else {
-            // Just observe without auto-connecting
-            scanJob = serviceScope.launch {
-                scanner?.discoveredDevices?.collect { devices ->
-                    _discoveredDevices.value = devices
-                }
+        // Track discovered devices for UI
+        scanJob = serviceScope.launch {
+            scanner?.discoveredDevices?.collect { devices ->
+                _discoveredDevices.value = devices
             }
         }
 
-        // Safety timeout (3 minutes)
-        scanTimeoutJob = serviceScope.launch {
-            delay(180000)
-            if (_connectionStatus.value == ConnectionStatus.SCANNING) {
-                Log.d(TAG, "Scan timeout after 3 minutes")
-                stopScanning()
-                _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                _statusMessage.value = "Scan timeout. Tap Scan to retry."
-            }
-        }
+        // No scan timeout - broadcast mode runs continuously until user stops
     }
 
     /**
@@ -508,9 +462,8 @@ class BluetoothService : Service() {
     }
 
     /**
-     * Auto-reconnect when BLE connection drops.
-     * Starts active scanning immediately - high duty cycle finds device in 100-500ms.
-     * No delay: BLE stack cleanup is handled by cleanupBleManager() inside connect().
+     * Auto-restart scan when BLE connection drops (legacy GATT path).
+     * In broadcast mode, scan is already running - just update status.
      */
     private var autoRescanJob: Job? = null
 
@@ -518,15 +471,14 @@ class BluetoothService : Service() {
         autoRescanJob?.cancel()
         autoRescanJob = serviceScope.launch {
             if (_connectionStatus.value == ConnectionStatus.DISCONNECTED && !useMockMode) {
-                // If scan is already running (broadcast mode), don't restart it.
-                // Restarting scan triggers Android's BLE scan throttling
-                // (max 5 start/stop cycles per 30 seconds).
+                // Scan is already running in broadcast mode - just update status
                 if (scanner?.isScanning?.value == true) {
-                    Log.d(TAG, "⚡ Scan already running (broadcast mode) - skipping restart")
+                    Log.d(TAG, "⚡ Scan still running - ready for next broadcast")
                     _connectionStatus.value = ConnectionStatus.SCANNING
-                    _statusMessage.value = "Monitoring..."
+                    _statusMessage.value = "Scanning..."
+                    updateNotification(ConnectionStatus.SCANNING)
                 } else {
-                    fastReconnect()
+                    startScanning()
                 }
             }
         }
