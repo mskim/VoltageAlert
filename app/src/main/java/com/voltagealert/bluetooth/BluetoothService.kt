@@ -53,6 +53,7 @@ class BluetoothService : Service() {
     private var autoConnectJob: Job? = null
     private var scanTimeoutJob: Job? = null
     private var readingTimeoutJob: Job? = null
+    private var lastScanRestartTime = 0L
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -373,21 +374,25 @@ class BluetoothService : Service() {
                     updateNotification(ConnectionStatus.CONNECTED)
                 }
 
-                // Restart 2-second reading timeout
-                // When sensor stops broadcasting, this clears the reading + stops alarm
+                // Restart 5-second reading timeout.
+                // 5s (not 2s) to ride through brief BLE signal drops that caused
+                // false timeouts and double-logging of the same detection.
+                // Sensor detection cycle is ~10s, so 5s timeout is safe.
                 readingTimeoutJob?.cancel()
                 readingTimeoutJob = serviceScope.launch {
-                    delay(2000)
+                    delay(5000)
                     Log.d(TAG, "⏱️ Broadcast timeout - sensor stopped")
                     _latestReading.value = null
                     stopAlertFromService()
-                    // Flush BLE scan cache immediately when sensor stops broadcasting.
-                    // Samsung/Android caches scan results and reduces callback frequency
-                    // for known devices after ~6 results. Flushing here ensures the NEXT
-                    // voltage detection is reported instantly (no 6th-detection delay).
-                    if (scanner?.isScanning?.value == true) {
-                        scanner?.flushScanCache()
-                        Log.d(TAG, "🔄 Flushed scan cache on sensor idle")
+                    // Full scan restart to clear Samsung BLE scan deduplication cache.
+                    // flushPendingScanResults() is unreliable on Samsung - it may succeed
+                    // without actually resetting callback frequency throttling.
+                    // Rate-limited: max once per 8s to stay under Android's 5-per-30s limit.
+                    val now = System.currentTimeMillis()
+                    if (scanner?.isScanning?.value == true && now - lastScanRestartTime > 8000) {
+                        lastScanRestartTime = now
+                        scanner?.restartScan()
+                        Log.d(TAG, "🔄 Scan restarted on sensor idle")
                     }
                     // Revert status to scanning (scan is still running)
                     if (scanner?.isScanning?.value == true) {

@@ -221,10 +221,8 @@ class BluetoothScanner(private val context: Context) {
     }
 
     /**
-     * Flush BLE scan cache by briefly stopping and restarting the scan.
-     * Samsung/Android caches scan results and reduces callback frequency for known devices.
-     * This forces Android to treat the next advertisement as a fresh discovery.
-     * Must be called infrequently (max 4 times per 30s to stay under Android's 5-per-30s limit).
+     * Flush BLE scan cache using flushPendingScanResults().
+     * Used for periodic cache maintenance during long continuous detections.
      */
     @SuppressLint("MissingPermission")
     fun flushScanCache() {
@@ -234,9 +232,24 @@ class BluetoothScanner(private val context: Context) {
             bleScanner?.flushPendingScanResults(scanCallback)
             Log.d(TAG, "🔄 Flushed BLE scan cache")
         } catch (e: Exception) {
-            Log.d(TAG, "flushPendingScanResults not supported, restarting scan")
-            // Fallback: quick stop+start to clear the cache
+            Log.d(TAG, "flushPendingScanResults not supported: ${e.message}")
+        }
+    }
+
+    /**
+     * Full scan stop+restart to completely clear Samsung BLE scan deduplication cache.
+     * More reliable than flushPendingScanResults() which may not reset the
+     * callback frequency throttling on Samsung devices.
+     * Must be called infrequently (max 3 times per 30s to stay under Android's 5-per-30s limit).
+     */
+    @SuppressLint("MissingPermission")
+    fun restartScan() {
+        if (!_isScanning.value) return
+
+        try {
+            Log.d(TAG, "🔄 Restarting scan to clear BLE cache...")
             bleScanner?.stopScan(scanCallback)
+
             val scanSettings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
@@ -248,8 +261,13 @@ class BluetoothScanner(private val context: Context) {
                     .setDeviceName("ESSYSTEM")
                     .build()
             )
+
             bleScanner?.startScan(scanFilters, scanSettings, scanCallback)
-            Log.d(TAG, "🔄 Scan restarted to flush cache")
+            Log.d(TAG, "🔄 Scan restarted successfully")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Missing Bluetooth permissions for scan restart", e)
+        } catch (e: Exception) {
+            Log.w(TAG, "Scan restart failed: ${e.message}")
         }
     }
 
