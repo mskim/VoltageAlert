@@ -51,6 +51,56 @@ This delay is a **safety risk** for workers near high-voltage power lines. The c
 - BLE ON when voltage detected (same as current)
 - The ONLY change: add 5 bytes of manufacturer-specific data to the advertisement packet that is already being broadcast
 
+### Concrete Example: Before vs After / 구체적 예시: 변경 전 vs 변경 후
+
+**BEFORE (current firmware / 현재 펌웨어):**
+
+Your `ble_gap_adv_set_fields()` currently produces something like this raw advertisement:
+
+```
+Byte:  02 01 06  09 09 45 53 53 59 53 54 45 4D  03 03 F0 FF
+       ├──────┤  ├─────────────────────────────┤  ├────────┤
+       Flags     Name: "ESSYSTEM"                UUID: 0xFFF0
+
+Total: 17 bytes
+```
+
+**AFTER (add 5 bytes / 5바이트 추가):**
+
+Just add `fields.mfg_data` before calling `ble_gap_adv_set_fields()`:
+
+```c
+// Add these 3 lines to your existing advertisement setup:
+static uint8_t mfg_data[] = { 0xE5, 0x02, 0x01 };  // Espressif ID + voltage code
+fields.mfg_data = mfg_data;
+fields.mfg_data_len = 3;
+```
+
+NimBLE wraps this into 5 bytes in the advertisement packet:
+
+```
+Byte:  02 01 06  09 09 45 53 53 59 53 54 45 4D  03 03 F0 FF  04 FF E5 02 01
+       ├──────┤  ├─────────────────────────────┤  ├────────┤  ├────────────┤
+       Flags     Name: "ESSYSTEM"                UUID:0xFFF0  NEW: Mfg Data
+       (same)    (same)                          (same)       ↓
+                                                              04 = length (4 bytes follow)
+                                                              FF = type (Manufacturer Specific)
+                                                              E5 02 = Company ID (Espressif)
+                                                              01 = voltage code (220V)
+
+Total: 22 bytes (within 31-byte BLE limit)
+```
+
+**That's it. You only add 3 lines of C code to your existing `ble_gap_adv_set_fields()` setup. NimBLE handles the rest.**
+
+**이것이 전부입니다. 기존 `ble_gap_adv_set_fields()` 설정에 C 코드 3줄만 추가하면 됩니다. NimBLE가 나머지를 처리합니다.**
+
+To change voltage code dynamically (e.g., when 220V changes to 380V):
+```c
+mfg_data[2] = 0x02;  // Change to 380V
+ble_gap_adv_set_fields(&fields);  // Update advertisement
+```
+
 ### 한국어
 
 **브로드캐스트 모드**: BLE advertisement 패킷의 manufacturer-specific data 필드에 전압 데이터를 직접 포함시킵니다. 폰은 스캔 결과에서 즉시 전압을 읽을 수 있습니다 — GATT 연결, 서비스 검색, 알림 설정이 필요 없습니다.
@@ -58,7 +108,7 @@ This delay is a **safety risk** for workers near high-voltage power lines. The c
 **핵심: 배터리 영향 없음.** BLE 켜기/끄기 동작은 현재와 완전히 동일합니다:
 - 전압 미감지 시 BLE OFF (현재와 동일)
 - 전압 감지 시 BLE ON (현재와 동일)
-- **유일한 변경**: 이미 브로드캐스트 중인 advertisement 패킷에 5바이트의 manufacturer-specific data 추가
+- **유일한 변경**: 이미 브로드캐스트 중인 advertisement 패킷에 5바이트의 manufacturer-specific data 추가 (위의 Before/After 예시 참조)
 
 ---
 
