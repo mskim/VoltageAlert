@@ -365,10 +365,26 @@ class BluetoothService : Service() {
         }
 
         if (autoConnect) {
-            // REACTIVE: Watch scan results and connect INSTANTLY when ESSYSTEM found
-            // No 5-second wait. The moment the scanner sees our device, we connect.
+            // With broadcast mode, GATT connection is only needed as fallback
+            // for old firmware that doesn't include voltage data in advertisements.
+            // Watch scan results: if broadcast readings arrive, skip GATT entirely.
+            // If no broadcast readings after 3 seconds, fall back to GATT connect.
             scanJob = serviceScope.launch {
                 val savedMac = getLastConnectedDevice()
+                var broadcastReceived = false
+
+                // Listen for broadcast readings to know if new firmware is active
+                val broadcastListenerJob = launch {
+                    scanner?.broadcastReading?.collect {
+                        broadcastReceived = true
+                        // Broadcast mode works - no GATT needed
+                        if (_connectionStatus.value == ConnectionStatus.SCANNING) {
+                            _connectionStatus.value = ConnectionStatus.CONNECTED
+                            _statusMessage.value = "Monitoring (broadcast)"
+                            updateNotification(ConnectionStatus.CONNECTED)
+                        }
+                    }
+                }
 
                 scanner?.discoveredDevices?.collect { devices ->
                     _discoveredDevices.value = devices
@@ -376,6 +392,12 @@ class BluetoothService : Service() {
 
                     // Already connecting/connected? Skip
                     if (_connectionStatus.value != ConnectionStatus.SCANNING) return@collect
+
+                    // If broadcast mode is working, don't GATT connect
+                    if (broadcastReceived) {
+                        Log.d(TAG, "⚡ Broadcast mode active - skipping GATT connection")
+                        return@collect
+                    }
 
                     // Priority 1: Saved device (fastest - we know it works)
                     val target = if (savedMac != null) {
@@ -388,11 +410,18 @@ class BluetoothService : Service() {
                         .maxByOrNull { it.rssi }
 
                     if (essystem != null) {
-                        Log.d(TAG, "⚡ ESSYSTEM found! Connecting to ${essystem.device.address} (scan continues for broadcast)")
-                        // Don't stop scan - keep it running for broadcast mode readings
-                        _statusMessage.value = "Connecting..."
+                        // Wait briefly to see if broadcast data arrives first
+                        delay(1000)
+                        if (broadcastReceived) {
+                            Log.d(TAG, "⚡ Broadcast data arrived - skipping GATT")
+                            return@collect
+                        }
+
+                        // No broadcast data - old firmware, use GATT fallback
+                        Log.d(TAG, "📡 No broadcast data - GATT fallback to ${essystem.device.address}")
+                        _statusMessage.value = "Connecting (GATT)..."
                         connect(essystem.device)
-                        return@collect  // Stop processing further scan results for GATT
+                        return@collect
                     }
                 }
             }
@@ -489,7 +518,16 @@ class BluetoothService : Service() {
         autoRescanJob?.cancel()
         autoRescanJob = serviceScope.launch {
             if (_connectionStatus.value == ConnectionStatus.DISCONNECTED && !useMockMode) {
-                fastReconnect()
+                // If scan is already running (broadcast mode), don't restart it.
+                // Restarting scan triggers Android's BLE scan throttling
+                // (max 5 start/stop cycles per 30 seconds).
+                if (scanner?.isScanning?.value == true) {
+                    Log.d(TAG, "⚡ Scan already running (broadcast mode) - skipping restart")
+                    _connectionStatus.value = ConnectionStatus.SCANNING
+                    _statusMessage.value = "Monitoring..."
+                } else {
+                    fastReconnect()
+                }
             }
         }
     }
