@@ -134,4 +134,73 @@ class SensorDataParserTest {
         // Same inputs should produce identical packets
         assertArrayEquals("Identical inputs should produce identical packets", packet1, packet2)
     }
+
+    // === Broadcast Mode (Advertisement Data) Tests ===
+
+    @Test
+    fun `parseAdvertisementData should parse valid voltage code`() {
+        val data = byteArrayOf(0x01) // 220V
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("Valid voltage code should parse", reading)
+        assertEquals("Voltage should be 220V", VoltageLevel.VOLTAGE_220V, reading?.voltage)
+    }
+
+    @Test
+    fun `parseAdvertisementData should parse all dangerous voltage levels`() {
+        val expectedVoltages = mapOf(
+            0x01.toByte() to VoltageLevel.VOLTAGE_220V,
+            0x02.toByte() to VoltageLevel.VOLTAGE_380V,
+            0x03.toByte() to VoltageLevel.VOLTAGE_229KV,
+            0x04.toByte() to VoltageLevel.VOLTAGE_154KV,
+            0x05.toByte() to VoltageLevel.VOLTAGE_345KV,
+            0x06.toByte() to VoltageLevel.VOLTAGE_500KV,
+            0x07.toByte() to VoltageLevel.VOLTAGE_765KV
+        )
+
+        expectedVoltages.forEach { (code, expectedLevel) ->
+            val data = byteArrayOf(code)
+            val reading = SensorDataParser.parseAdvertisementData(data)
+
+            assertNotNull("Voltage code 0x${"%02X".format(code)} should parse", reading)
+            assertEquals("Voltage code 0x${"%02X".format(code)} should map to $expectedLevel",
+                expectedLevel, reading?.voltage)
+        }
+    }
+
+    @Test
+    fun `parseAdvertisementData should return null for empty data`() {
+        val data = byteArrayOf()
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNull("Empty data should return null", reading)
+    }
+
+    @Test
+    fun `parseAdvertisementData should return null for unknown voltage code`() {
+        val data = byteArrayOf(0x99.toByte())
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNull("Unknown voltage code should return null", reading)
+    }
+
+    @Test
+    fun `parseAdvertisementData should return null for diagnostic codes`() {
+        // Diagnostic codes are not dangerous, should not trigger alerts
+        val okData = byteArrayOf(0xF0.toByte())
+        val ngData = byteArrayOf(0xF1.toByte())
+
+        assertNull("Diagnostic OK should return null", SensorDataParser.parseAdvertisementData(okData))
+        assertNull("Diagnostic NG should return null", SensorDataParser.parseAdvertisementData(ngData))
+    }
+
+    @Test
+    fun `parseAdvertisementData should use first byte only`() {
+        // If manufacturer data has extra bytes, only the first byte is the voltage code
+        val data = byteArrayOf(0x05, 0x00, 0xFF.toByte())
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("Should parse first byte as voltage code", reading)
+        assertEquals("Should be 345KV", VoltageLevel.VOLTAGE_345KV, reading?.voltage)
+    }
 }

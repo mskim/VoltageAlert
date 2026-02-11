@@ -14,8 +14,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.ParcelUuid
 import android.util.Log
+import com.voltagealert.models.VoltageReading
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
@@ -43,10 +47,17 @@ class BluetoothScanner(private val context: Context) {
 
     private val deviceMap = mutableMapOf<String, ScannedDevice>()
 
+    // Broadcast mode: emits voltage readings detected from advertisement data
+    private val _broadcastReading = MutableSharedFlow<VoltageReading>(extraBufferCapacity = 1)
+    val broadcastReading: SharedFlow<VoltageReading> = _broadcastReading.asSharedFlow()
+
     companion object {
         private const val TAG = "BluetoothScanner"
         // ST9401-UP / ESSYSTEM service UUID (confirmed by manufacturer)
         private val SERVICE_UUID = UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb")
+
+        // Espressif Company ID for manufacturer-specific data (0x02E5)
+        private const val ESPRESSIF_COMPANY_ID = 0x02E5
 
         // Device name prefixes to look for (ST9401-UP confirmed from Mac scan!)
         private val DEVICE_NAME_PREFIXES = listOf("ST9401-UP", "ST940I-UP", "ESSYSTEM", "VoltSensor", "HM-10", "JDY-08", "MLT-BT05")
@@ -68,30 +79,30 @@ class BluetoothScanner(private val context: Context) {
                 UUID.fromString(it.uuid.toString())
             }
 
-            // Check manufacturer data for "220V WARNING"
+            // Broadcast mode: check manufacturer-specific data for voltage code
             val scanRecord = result.scanRecord
             val manufacturerData = scanRecord?.manufacturerSpecificData
             var hasVoltageData = false
             if (manufacturerData != null) {
+                // Check Espressif Company ID (0x02E5) for broadcast voltage data
+                val espressifData = manufacturerData.get(ESPRESSIF_COMPANY_ID)
+                if (espressifData != null) {
+                    val reading = SensorDataParser.parseAdvertisementData(espressifData)
+                    if (reading != null) {
+                        Log.d(TAG, "⚡ BROADCAST VOLTAGE: ${reading.voltage} from ${device.address} RSSI: $rssi")
+                        _broadcastReading.tryEmit(reading)
+                        hasVoltageData = true
+                    }
+                }
+
+                // Also check other manufacturer IDs for legacy detection
                 for (i in 0 until manufacturerData.size()) {
                     val manufacturerId = manufacturerData.keyAt(i)
+                    if (manufacturerId == ESPRESSIF_COMPANY_ID) continue // Already handled above
                     val data = manufacturerData.valueAt(i)
                     val dataString = String(data, Charsets.UTF_8)
                     if (dataString.contains("220V") || dataString.contains("WARNING") || dataString.contains("ST940")) {
                         Log.d(TAG, "⚡ FOUND VOLTAGE DEVICE! ${device.address} - MfgID: $manufacturerId, Data: ${data.contentToString()}, String: $dataString")
-                        hasVoltageData = true
-                    }
-                }
-            }
-
-            // Also check service data
-            val serviceDataMap = scanRecord?.serviceData
-            if (serviceDataMap != null) {
-                for (entry in serviceDataMap.entries) {
-                    val data = entry.value
-                    val dataString = String(data, Charsets.UTF_8)
-                    if (dataString.contains("220V") || dataString.contains("WARNING") || dataString.contains("ST940")) {
-                        Log.d(TAG, "⚡ FOUND VOLTAGE DEVICE! ${device.address} - Service UUID: ${entry.key}, Data: ${data.contentToString()}, String: $dataString")
                         hasVoltageData = true
                     }
                 }

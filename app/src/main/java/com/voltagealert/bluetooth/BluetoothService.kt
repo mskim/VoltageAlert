@@ -48,6 +48,7 @@ class BluetoothService : Service() {
     private var useMockMode = false
     private var scanner: BluetoothScanner? = null
     private var scanJob: Job? = null
+    private var broadcastJob: Job? = null
     private var autoConnectJob: Job? = null
     private var scanTimeoutJob: Job? = null
     private var readingTimeoutJob: Job? = null
@@ -132,46 +133,14 @@ class BluetoothService : Service() {
     }
 
     /**
-     * Reconnect to a known device using autoConnect mode.
-     * Uses firmware-level BLE monitoring - connects the INSTANT the sensor appears.
-     * Much faster than app-level scanning for reconnection.
+     * Fast reconnect: immediately start active scanning for saved device.
+     * Active scanning uses HIGH duty cycle (finds device in 100-500ms).
+     * autoConnect(true) was SLOWER because it uses low duty cycle background scanning.
      */
-    @SuppressLint("MissingPermission")
-    private fun reconnectWithAutoConnect(macAddress: String) {
-        autoRescanJob?.cancel()
-        autoRescanJob = serviceScope.launch {
-            try {
-                _connectionStatus.value = ConnectionStatus.SCANNING
-                _statusMessage.value = "Waiting for sensor..."
-                updateNotification(ConnectionStatus.SCANNING)
-
-                Log.d(TAG, "⚡ autoConnect to saved device: $macAddress (firmware-level monitoring)")
-
-                cleanupBleManager()
-                bleManager = createBleManager()
-
-                val bluetoothManager = getSystemService(android.content.Context.BLUETOOTH_SERVICE) as android.bluetooth.BluetoothManager
-                val device = bluetoothManager.adapter.getRemoteDevice(macAddress)
-
-                // autoConnect(true) = firmware monitors for device, connects immediately when found
-                // No app-level scanning needed - this runs at the BLE chipset level
-                bleManager?.connect(device)
-                    ?.useAutoConnect(true)
-                    ?.retry(2, 200)
-                    ?.suspend()
-
-                Log.d(TAG, "✓ Auto-reconnected to: $macAddress")
-                saveLastConnectedDevice(macAddress)
-
-            } catch (e: Exception) {
-                Log.e(TAG, "autoConnect failed: ${e.message}")
-                if (_connectionStatus.value != ConnectionStatus.CONNECTED) {
-                    Log.d(TAG, "🔄 Falling back to active scan...")
-                    _connectionStatus.value = ConnectionStatus.DISCONNECTED
-                    startScanning(autoConnect = true)
-                }
-            }
-        }
+    private fun fastReconnect() {
+        Log.d(TAG, "⚡ Fast reconnect: immediate active scan")
+        _statusMessage.value = "Reconnecting..."
+        startScanning(autoConnect = true)
     }
 
     /**
@@ -374,6 +343,27 @@ class BluetoothService : Service() {
 
         scanner?.startScan()
 
+        // Broadcast mode: collect voltage readings from advertisement data.
+        // This provides instant detection (100-500ms) without GATT connection.
+        // Works alongside GATT connection - whichever delivers data first wins.
+        broadcastJob?.cancel()
+        broadcastJob = serviceScope.launch {
+            scanner?.broadcastReading?.collect { reading ->
+                Log.d(TAG, "⚡ BROADCAST reading: ${reading.voltage} - instant alarm!")
+                _latestReading.value = reading
+                _errorCount.value = 0
+
+                // Restart reading timeout (same as GATT path)
+                readingTimeoutJob?.cancel()
+                readingTimeoutJob = serviceScope.launch {
+                    delay(2000)
+                    Log.d(TAG, "⏱️ Broadcast reading timeout - sensor stopped sending")
+                    _latestReading.value = null
+                    stopAlertFromService()
+                }
+            }
+        }
+
         if (autoConnect) {
             // REACTIVE: Watch scan results and connect INSTANTLY when ESSYSTEM found
             // No 5-second wait. The moment the scanner sees our device, we connect.
@@ -398,11 +388,11 @@ class BluetoothService : Service() {
                         .maxByOrNull { it.rssi }
 
                     if (essystem != null) {
-                        Log.d(TAG, "⚡ ESSYSTEM found instantly! Connecting to ${essystem.device.address}")
-                        scanner?.stopScan()
+                        Log.d(TAG, "⚡ ESSYSTEM found! Connecting to ${essystem.device.address} (scan continues for broadcast)")
+                        // Don't stop scan - keep it running for broadcast mode readings
                         _statusMessage.value = "Connecting..."
                         connect(essystem.device)
-                        return@collect  // Stop processing further scan results
+                        return@collect  // Stop processing further scan results for GATT
                     }
                 }
             }
@@ -435,6 +425,8 @@ class BluetoothService : Service() {
         scanner?.stopScan()
         scanJob?.cancel()
         scanJob = null
+        broadcastJob?.cancel()
+        broadcastJob = null
         autoConnectJob?.cancel()
         autoConnectJob = null
         scanTimeoutJob?.cancel()
@@ -459,6 +451,7 @@ class BluetoothService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         readingTimeoutJob?.cancel()
+        broadcastJob?.cancel()
         autoRescanJob?.cancel()
         serviceScope.launch {
             cleanupBleManager()
@@ -487,25 +480,16 @@ class BluetoothService : Service() {
 
     /**
      * Auto-reconnect when BLE connection drops.
-     * Uses autoConnect (firmware-level) if we have a saved device, otherwise active scan.
+     * Starts active scanning immediately - high duty cycle finds device in 100-500ms.
+     * No delay: BLE stack cleanup is handled by cleanupBleManager() inside connect().
      */
     private var autoRescanJob: Job? = null
 
     private fun autoRescanOnDisconnect() {
         autoRescanJob?.cancel()
         autoRescanJob = serviceScope.launch {
-            delay(300)  // 300ms - minimal delay for BLE stack cleanup
             if (_connectionStatus.value == ConnectionStatus.DISCONNECTED && !useMockMode) {
-                val savedMac = getLastConnectedDevice()
-                if (savedMac != null) {
-                    // Known device: use autoConnect (firmware-level, fastest)
-                    reconnectWithAutoConnect(savedMac)
-                } else {
-                    // First time: use active scanning
-                    Log.d(TAG, "🔄 No saved device, using active scan...")
-                    _statusMessage.value = "Reconnecting..."
-                    startScanning(autoConnect = true)
-                }
+                fastReconnect()
             }
         }
     }

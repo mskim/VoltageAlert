@@ -124,6 +124,43 @@ object SensorDataParser {
     }
 
     /**
+     * Parse voltage data from BLE advertisement manufacturer-specific data.
+     *
+     * Broadcast Mode Format (from manufacturer-specific data payload):
+     * The full manufacturer-specific data includes Company ID (2 bytes, little-endian)
+     * followed by the payload. Android's ScanRecord.getManufacturerSpecificData()
+     * strips the Company ID, so we receive only the payload byte(s).
+     *
+     * Payload: [VoltageCode]
+     *   VoltageCode: 0x01=220V, 0x02=380V, 0x03=22.9KV, 0x04=154KV,
+     *                0x05=345KV, 0x06=500KV, 0x07=765KV
+     *
+     * @param manufacturerData The payload bytes after Company ID (from ScanRecord)
+     * @return VoltageReading if valid voltage code found, null otherwise
+     */
+    fun parseAdvertisementData(manufacturerData: ByteArray): VoltageReading? {
+        if (manufacturerData.isEmpty()) {
+            return null
+        }
+
+        // The manufacturer data payload is just the voltage code byte
+        val voltageCode = manufacturerData[0]
+        val voltage = VoltageLevel.fromByteCode(voltageCode) ?: return null
+
+        // Only return readings for dangerous voltage levels (not diagnostic codes)
+        if (!voltage.isDangerous) {
+            return null
+        }
+
+        return VoltageReading(
+            voltage = voltage,
+            timestamp = LocalDateTime.now(),
+            sequenceNumber = 0,
+            rawBytes = manufacturerData.copyOf()
+        )
+    }
+
+    /**
      * Create a test packet for debugging/testing.
      *
      * @param voltage The voltage level to encode
