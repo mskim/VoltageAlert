@@ -53,7 +53,6 @@ class BluetoothService : Service() {
     private var autoConnectJob: Job? = null
     private var scanTimeoutJob: Job? = null
     private var readingTimeoutJob: Job? = null
-    private var lastScanRestartTime = 0L
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -374,27 +373,15 @@ class BluetoothService : Service() {
                     updateNotification(ConnectionStatus.CONNECTED)
                 }
 
-                // Restart 5-second reading timeout.
-                // 5s (not 2s) to ride through brief BLE signal drops that caused
-                // false timeouts and double-logging of the same detection.
-                // Sensor detection cycle is ~10s, so 5s timeout is safe.
+                // 2-second reading timeout: when sensor stops broadcasting,
+                // clear the reading and stop the alarm after 2 seconds.
                 readingTimeoutJob?.cancel()
                 readingTimeoutJob = serviceScope.launch {
-                    delay(5000)
+                    delay(2000)
                     Log.d(TAG, "⏱️ Broadcast timeout - sensor stopped")
                     _latestReading.value = null
                     stopAlertFromService()
-                    // Full scan restart to clear Samsung BLE scan deduplication cache.
-                    // flushPendingScanResults() is unreliable on Samsung - it may succeed
-                    // without actually resetting callback frequency throttling.
-                    // Rate-limited: max once per 8s to stay under Android's 5-per-30s limit.
-                    val now = System.currentTimeMillis()
-                    if (scanner?.isScanning?.value == true && now - lastScanRestartTime > 8000) {
-                        lastScanRestartTime = now
-                        scanner?.restartScan()
-                        Log.d(TAG, "🔄 Scan restarted on sensor idle")
-                    }
-                    // Revert status to scanning (scan is still running)
+                    // Revert status to scanning (scan stays running continuously)
                     if (scanner?.isScanning?.value == true) {
                         _connectionStatus.value = ConnectionStatus.SCANNING
                         _statusMessage.value = "Scanning..."
@@ -404,14 +391,15 @@ class BluetoothService : Service() {
             }
         }
 
-        // Periodic BLE scan cache flush (every 20 seconds).
-        // Samsung/Android reduces scan callback frequency for known devices over time.
-        // Flushing resets this so every advertisement is reported promptly.
-        // 20s interval = max 1-2 flushes per 30s, well under Android's 5-per-30s limit.
+        // Periodic BLE scan cache flush (every 8 seconds).
+        // Samsung/Android reduces scan callback frequency for known devices after ~6 results.
+        // Flushing every 8s ensures the cache is fresh for each ~10s detection cycle.
+        // flushPendingScanResults() has no rate limit (unlike scan start/stop which is 5 per 30s).
+        // IMPORTANT: Do NOT stop/restart the scan here - that creates gaps where ads are missed.
         scanCacheFlushJob?.cancel()
         scanCacheFlushJob = serviceScope.launch {
             while (true) {
-                delay(20000)
+                delay(8000)
                 if (scanner?.isScanning?.value == true) {
                     scanner?.flushScanCache()
                 }
