@@ -391,20 +391,10 @@ class BluetoothService : Service() {
             }
         }
 
-        // Periodic BLE scan cache flush (every 8 seconds).
-        // Samsung/Android reduces scan callback frequency for known devices after ~6 results.
-        // Flushing every 8s ensures the cache is fresh for each ~10s detection cycle.
-        // flushPendingScanResults() has no rate limit (unlike scan start/stop which is 5 per 30s).
-        // IMPORTANT: Do NOT stop/restart the scan here - that creates gaps where ads are missed.
-        scanCacheFlushJob?.cancel()
-        scanCacheFlushJob = serviceScope.launch {
-            while (true) {
-                delay(8000)
-                if (scanner?.isScanning?.value == true) {
-                    scanner?.flushScanCache()
-                }
-            }
-        }
+        // No periodic flush or scan restart - let the scan run uninterrupted.
+        // flushPendingScanResults() on Samsung actually disrupts scanning,
+        // causing MORE missed detections than Samsung's deduplication alone.
+        // Aggressive scan settings (MATCH_MODE_AGGRESSIVE) handle the rest.
 
         // Track discovered devices for UI
         scanJob = serviceScope.launch {
