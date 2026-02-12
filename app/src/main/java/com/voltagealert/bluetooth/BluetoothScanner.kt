@@ -178,16 +178,22 @@ class BluetoothScanner(private val context: Context) {
                 .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
                 .build()
 
-            // Filter for ESSYSTEM device only (confirmed device name)
+            // Multiple OR'd filters for maximum compatibility across OEMs.
+            // Some devices (Lenovo/Android 15) may not support device name filter.
             val scanFilters = listOf(
+                // Filter 1: by device name
                 ScanFilter.Builder()
-                    .setDeviceName("ESSYSTEM")  // Only scan for our voltage sensor
+                    .setDeviceName("ESSYSTEM")
+                    .build(),
+                // Filter 2: by service UUID (fallback if name filter doesn't work)
+                ScanFilter.Builder()
+                    .setServiceUuid(ParcelUuid(SERVICE_UUID))
                     .build()
             )
 
             // Start BLE scan
             bleScanner?.startScan(scanFilters, scanSettings, scanCallback)
-            Log.d(TAG, "BLE scan started WITH filter: device name = ESSYSTEM")
+            Log.d(TAG, "BLE scan started WITH filters: name=ESSYSTEM OR uuid=$SERVICE_UUID")
 
         } catch (e: SecurityException) {
             Log.e(TAG, "Missing Bluetooth permissions", e)
@@ -259,6 +265,9 @@ class BluetoothScanner(private val context: Context) {
             val scanFilters = listOf(
                 ScanFilter.Builder()
                     .setDeviceName("ESSYSTEM")
+                    .build(),
+                ScanFilter.Builder()
+                    .setServiceUuid(ParcelUuid(SERVICE_UUID))
                     .build()
             )
 

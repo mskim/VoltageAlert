@@ -17,9 +17,12 @@ object BluetoothPermissionHelper {
     fun getRequiredPermissions(): Array<String> {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Android 12+ (API 31+)
+            // ACCESS_FINE_LOCATION is still required because BLUETOOTH_SCAN is declared
+            // without neverForLocation flag (we need location for BLE scan results).
             arrayOf(
                 Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.BLUETOOTH_SCAN
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.ACCESS_FINE_LOCATION
             )
         } else {
             // Android 8.0 - 11 (API 26-30)
