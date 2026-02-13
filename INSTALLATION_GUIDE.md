@@ -1,4 +1,4 @@
-# VoltageAlert Installation Guide
+# HVPA Installation Guide
 ## 활선 접근 경보기 설치 가이드
 
 **Version:** 1.0.0
@@ -9,9 +9,9 @@
 
 ## 📱 English Version
 
-### What is VoltageAlert?
+### What is HVPA?
 
-VoltageAlert (활선 접근 경보기) is a workplace safety application designed for Korean power company workers. It provides real-time warnings when approaching dangerous high-voltage power lines through:
+HVPA (활선 접근 경보기) is a workplace safety application designed for Korean power company workers. It provides real-time warnings when approaching dangerous high-voltage power lines through:
 
 - 🔊 **Audio alerts** - Warning sounds
 - 📳 **Haptic alerts** - Vibration patterns
@@ -39,7 +39,7 @@ VoltageAlert (활선 접근 경보기) is a workplace safety application designe
 
 #### Step 1: Enable Unknown Sources
 
-Before installing VoltageAlert, you must allow installation from sources other than the Play Store.
+Before installing HVPA, you must allow installation from sources other than the Play Store.
 
 **For Android 8-11:**
 1. Open **Settings** (설정)
@@ -62,15 +62,15 @@ Before installing VoltageAlert, you must allow installation from sources other t
 
 #### Step 2: Download the APK File
 
-Obtain the VoltageAlert APK file from your company IT department or supervisor via:
+Obtain the HVPA APK file from your company IT department or supervisor via:
 
-- 📧 **Email attachment:** `VoltageAlert-v1.0.0-release.apk`
+- 📧 **Email attachment:** `HVPA-v1.0.0.apk`
 - 💾 **USB drive:** Copy to your phone's Downloads folder
 - ☁️ **Cloud storage:** Download from shared link (Google Drive, etc.)
 - 📱 **Direct transfer:** Via Bluetooth or file sharing
 
 **File Details:**
-- **Filename:** VoltageAlert-v1.0.0-release.apk
+- **Filename:** HVPA-v1.0.0.apk
 - **Size:** Approximately 2.3 MB
 - **Version:** 1.0.0
 
@@ -81,7 +81,7 @@ Obtain the VoltageAlert APK file from your company IT department or supervisor v
 1. **Locate the APK file:**
    - Open **My Files** or **Files** app
    - Navigate to **Downloads** folder
-   - Find **VoltageAlert-v1.0.0-release.apk**
+   - Find **HVPA-v1.0.0.apk**
 
 2. **Tap the APK file** to start installation
 
@@ -106,7 +106,7 @@ Obtain the VoltageAlert APK file from your company IT department or supervisor v
 
 #### Step 4: Grant Permissions
 
-When you first open VoltageAlert, it will request several permissions. **All permissions are required** for the app to function properly.
+When you first open HVPA, it will request several permissions. **All permissions are required** for the app to function properly.
 
 **Required Permissions:**
 
@@ -126,7 +126,7 @@ When you first open VoltageAlert, it will request several permissions. **All per
    - **Why:** Haptic alerts for dangerous voltage
    - **Action:** Automatically granted
 
-⚠️ **Important:** If you deny any permission, the app may not work correctly. You can change permissions later in Android Settings → Apps → VoltageAlert → Permissions.
+⚠️ **Important:** If you deny any permission, the app may not work correctly. You can change permissions later in Android Settings → Apps → HVPA → Permissions.
 
 ---
 
@@ -149,7 +149,7 @@ After installation and granting permissions:
 
 ---
 
-### Using VoltageAlert
+### Using HVPA
 
 #### Main Screen
 
@@ -161,7 +161,7 @@ The main screen displays:
 
 #### Connecting to Sensor
 
-1. **Power on your ST9401-UP voltage sensor**
+1. **Power on your Sensor voltage sensor**
 2. Tap **Scan** button in the app
 3. **Wait for device discovery** (5-10 seconds)
 4. App will show pairing instructions
@@ -179,11 +179,37 @@ When dangerous voltage is detected:
 1. **📱 Screen:** Full-screen warning with voltage level
 2. **🔊 Sound:** Two-tone siren (1200Hz/800Hz alternating)
 3. **📳 Vibration:** Strong haptic pattern
-4. **⏰ Duration:** Continues until you dismiss
+4. **⏰ Duration:** Continues until voltage is no longer detected (auto-stops after 2 seconds)
 
-**To dismiss alert:**
+**To dismiss alert manually:**
 - Tap **OK** button on alert screen
 - Move away from high-voltage area
+
+#### Saving Event Logs
+
+You can save the event log to a file for record-keeping or reporting.
+
+1. Tap the **Save** (저장) button next to the Clear button in the Event Log section
+2. The log file is saved to your phone's internal storage:
+   - **Path:** `Phone > HVPA > HVPA#yyyyMMdd_HHmmss.log`
+   - **Example:** `HVPA#20260211_175552.log`
+3. A confirmation message shows the saved file path
+4. Access saved logs using any **File Manager** app on your phone
+
+**Log File Format:**
+```
+1. 2026/02/11 17:54:01 220V
+2. 2026/02/11 17:54:11 220V
+3. 2026/02/11 17:54:24 220V
+...
+```
+
+**Notes:**
+- Each line shows: sequence number, date/time, and detected voltage level
+- Maximum 99 log entries are kept in the app (oldest entries are removed automatically)
+- On Android 8-9, the app will request **storage permission** when saving for the first time - tap **Allow**
+- The HVPA folder is created automatically if it doesn't exist
+- Log files can be shared via email, messaging apps, or USB transfer
 
 ---
 
@@ -196,6 +222,7 @@ Access settings via **⚙️ icon** on main screen:
 - **Mock Mode:** Enable for testing without sensor (개발자 모드)
 - **Volume:** Adjust alert sound volume
 - **Vibration:** Enable/disable haptic alerts
+- **Save Logs:** Save event log to phone storage (HVPA folder)
 - **Clear Logs:** Delete all event history
 
 ---
@@ -223,7 +250,7 @@ Access settings via **⚙️ icon** on main screen:
 2. Check Bluetooth is enabled on phone
 3. Try unpairing and pairing again:
    - Settings → Bluetooth → Forget device
-   - Re-scan in VoltageAlert app
+   - Re-scan in HVPA app
 4. Try different PIN codes: 1234, 9527, 0000
 5. Ensure location permission is granted
 
@@ -236,7 +263,7 @@ Access settings via **⚙️ icon** on main screen:
 **Solutions:**
 1. Check phone volume (must be at least 50%)
 2. Disable Do Not Disturb mode
-3. Check VoltageAlert settings → Volume
+3. Check HVPA settings → Volume
 4. Test with Mock Mode to verify
 
 ---
@@ -247,7 +274,7 @@ Access settings via **⚙️ icon** on main screen:
 
 **Solutions:**
 1. Restart your phone
-2. Clear app cache: Settings → Apps → VoltageAlert → Storage → Clear Cache
+2. Clear app cache: Settings → Apps → HVPA → Storage → Clear Cache
 3. Reinstall the app
 4. Contact IT support if problem persists
 
@@ -255,11 +282,11 @@ Access settings via **⚙️ icon** on main screen:
 
 ### Uninstallation
 
-To remove VoltageAlert:
+To remove HVPA:
 
 1. Open **Settings** (설정)
 2. Tap **Apps** (앱)
-3. Find and tap **VoltageAlert**
+3. Find and tap **HVPA**
 4. Tap **Uninstall** (제거)
 5. Confirm when prompted
 
@@ -281,7 +308,7 @@ To remove VoltageAlert:
 ### Privacy & Security
 
 **Data Collection:**
-- VoltageAlert only collects voltage readings and timestamps
+- HVPA only collects voltage readings and timestamps
 - All data is stored locally on your device
 - No data is sent to external servers
 - Bluetooth connection is encrypted
@@ -298,7 +325,7 @@ To remove VoltageAlert:
 **Disclaimer:**
 This app is a supplementary safety tool. It does NOT replace standard safety equipment, procedures, or training. Always follow your company's safety protocols and wear appropriate protective equipment when working near high-voltage lines.
 
-**Copyright © 2026 VoltageAlert**
+**Copyright © 2026 HVPA**
 All rights reserved.
 
 ---
@@ -306,9 +333,9 @@ All rights reserved.
 
 ## 🇰🇷 한국어 버전
 
-### VoltageAlert란 무엇인가요?
+### HVPA란 무엇인가요?
 
-VoltageAlert (활선 접근 경보기)는 한국 전력 회사 직원을 위해 설계된 작업장 안전 애플리케이션입니다. 고압 전선에 접근할 때 실시간 경고를 제공합니다:
+HVPA (활선 접근 경보기)는 한국 전력 회사 직원을 위해 설계된 작업장 안전 애플리케이션입니다. 고압 전선에 접근할 때 실시간 경고를 제공합니다:
 
 - 🔊 **음성 경고** - 경고음
 - 📳 **진동 경고** - 진동 패턴
@@ -336,7 +363,7 @@ VoltageAlert (활선 접근 경보기)는 한국 전력 회사 직원을 위해 
 
 #### 1단계: 알 수 없는 소스 허용
 
-VoltageAlert를 설치하기 전에 Play 스토어 이외의 소스에서 설치를 허용해야 합니다.
+HVPA를 설치하기 전에 Play 스토어 이외의 소스에서 설치를 허용해야 합니다.
 
 **Android 8-11:**
 1. **설정** 열기
@@ -359,15 +386,15 @@ VoltageAlert를 설치하기 전에 Play 스토어 이외의 소스에서 설치
 
 #### 2단계: APK 파일 다운로드
 
-회사 IT 부서 또는 관리자로부터 VoltageAlert APK 파일을 받으세요:
+회사 IT 부서 또는 관리자로부터 HVPA APK 파일을 받으세요:
 
-- 📧 **이메일 첨부:** `VoltageAlert-v1.0.0-release.apk`
+- 📧 **이메일 첨부:** `HVPA-v1.0.0.apk`
 - 💾 **USB 드라이브:** 휴대폰의 다운로드 폴더로 복사
 - ☁️ **클라우드 저장소:** 공유 링크에서 다운로드 (Google 드라이브 등)
 - 📱 **직접 전송:** 블루투스 또는 파일 공유
 
 **파일 정보:**
-- **파일명:** VoltageAlert-v1.0.0-release.apk
+- **파일명:** HVPA-v1.0.0.apk
 - **크기:** 약 2.3 MB
 - **버전:** 1.0.0
 
@@ -378,7 +405,7 @@ VoltageAlert를 설치하기 전에 Play 스토어 이외의 소스에서 설치
 1. **APK 파일 찾기:**
    - **내 파일** 또는 **파일** 앱 열기
    - **다운로드** 폴더로 이동
-   - **VoltageAlert-v1.0.0-release.apk** 찾기
+   - **HVPA-v1.0.0.apk** 찾기
 
 2. **APK 파일을 탭**하여 설치 시작
 
@@ -403,7 +430,7 @@ VoltageAlert를 설치하기 전에 Play 스토어 이외의 소스에서 설치
 
 #### 4단계: 권한 부여
 
-VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로 작동하려면 **모든 권한이 필요**합니다.
+HVPA를 처음 열면 여러 권한을 요청합니다. 앱이 제대로 작동하려면 **모든 권한이 필요**합니다.
 
 **필수 권한:**
 
@@ -423,7 +450,7 @@ VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로
    - **이유:** 위험한 전압에 대한 진동 경고
    - **조치:** 자동으로 부여됨
 
-⚠️ **중요:** 권한을 거부하면 앱이 제대로 작동하지 않을 수 있습니다. 나중에 Android 설정 → 앱 → VoltageAlert → 권한에서 권한을 변경할 수 있습니다.
+⚠️ **중요:** 권한을 거부하면 앱이 제대로 작동하지 않을 수 있습니다. 나중에 Android 설정 → 앱 → HVPA → 권한에서 권한을 변경할 수 있습니다.
 
 ---
 
@@ -446,7 +473,7 @@ VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로
 
 ---
 
-### VoltageAlert 사용하기
+### HVPA 사용하기
 
 #### 메인 화면
 
@@ -458,7 +485,7 @@ VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로
 
 #### 센서 연결
 
-1. **ST9401-UP 전압 센서 전원 켜기**
+1. **Sensor 전압 센서 전원 켜기**
 2. 앱에서 **스캔** 버튼 탭
 3. **장치 검색 대기** (5-10초)
 4. 앱이 페어링 지침을 표시합니다
@@ -476,11 +503,37 @@ VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로
 1. **📱 화면:** 전압 레벨이 있는 전체 화면 경고
 2. **🔊 소리:** 2톤 사이렌 (1200Hz/800Hz 교대)
 3. **📳 진동:** 강한 진동 패턴
-4. **⏰ 지속 시간:** 해제할 때까지 계속됩니다
+4. **⏰ 지속 시간:** 전압이 더 이상 감지되지 않을 때까지 계속됩니다 (2초 후 자동 중지)
 
-**경고 해제:**
+**경고 수동 해제:**
 - 경고 화면에서 **확인** 버튼 탭
 - 고압 지역에서 이동
+
+#### 이벤트 로그 저장
+
+기록 보관 또는 보고를 위해 이벤트 로그를 파일로 저장할 수 있습니다.
+
+1. 이벤트 로그 섹션에서 **로그 지우기** 버튼 옆의 **저장** 버튼을 탭합니다
+2. 로그 파일이 휴대폰 내부 저장소에 저장됩니다:
+   - **경로:** `내 파일 > HVPA > HVPA#yyyyMMdd_HHmmss.log`
+   - **예시:** `HVPA#20260211_175552.log`
+3. 저장된 파일 경로를 확인하는 메시지가 표시됩니다
+4. 휴대폰의 **파일 관리자** 앱을 사용하여 저장된 로그에 접근할 수 있습니다
+
+**로그 파일 형식:**
+```
+1. 2026/02/11 17:54:01 220V
+2. 2026/02/11 17:54:11 220V
+3. 2026/02/11 17:54:24 220V
+...
+```
+
+**참고:**
+- 각 줄에는 순서 번호, 날짜/시간, 감지된 전압 레벨이 표시됩니다
+- 앱에는 최대 99개의 로그 항목이 유지됩니다 (가장 오래된 항목은 자동으로 삭제됩니다)
+- Android 8-9에서는 처음 저장할 때 **저장소 권한**을 요청합니다 - **허용**을 탭하세요
+- HVPA 폴더가 없으면 자동으로 생성됩니다
+- 로그 파일은 이메일, 메시지 앱 또는 USB 전송을 통해 공유할 수 있습니다
 
 ---
 
@@ -493,6 +546,7 @@ VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로
 - **Mock 모드:** 센서 없이 테스트하기 위해 활성화 (개발자 모드)
 - **볼륨:** 경고 소리 볼륨 조정
 - **진동:** 진동 경고 활성화/비활성화
+- **로그 저장:** 이벤트 로그를 휴대폰 저장소에 저장 (HVPA 폴더)
 - **로그 지우기:** 모든 이벤트 기록 삭제
 
 ---
@@ -520,7 +574,7 @@ VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로
 2. 휴대폰에서 블루투스가 활성화되어 있는지 확인
 3. 페어링 해제 후 다시 페어링 시도:
    - 설정 → 블루투스 → 장치 삭제
-   - VoltageAlert 앱에서 다시 스캔
+   - HVPA 앱에서 다시 스캔
 4. 다른 PIN 코드 시도: 1234, 9527, 0000
 5. 위치 권한이 부여되었는지 확인
 
@@ -533,7 +587,7 @@ VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로
 **해결 방법:**
 1. 휴대폰 볼륨 확인 (최소 50% 이상이어야 함)
 2. 방해 금지 모드 비활성화
-3. VoltageAlert 설정 → 볼륨 확인
+3. HVPA 설정 → 볼륨 확인
 4. Mock 모드로 테스트하여 확인
 
 ---
@@ -544,7 +598,7 @@ VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로
 
 **해결 방법:**
 1. 휴대폰 재시작
-2. 앱 캐시 지우기: 설정 → 앱 → VoltageAlert → 저장소 → 캐시 지우기
+2. 앱 캐시 지우기: 설정 → 앱 → HVPA → 저장소 → 캐시 지우기
 3. 앱 재설치
 4. 문제가 지속되면 IT 지원팀에 문의
 
@@ -552,11 +606,11 @@ VoltageAlert를 처음 열면 여러 권한을 요청합니다. 앱이 제대로
 
 ### 제거
 
-VoltageAlert를 제거하려면:
+HVPA를 제거하려면:
 
 1. **설정** 열기
 2. **앱** 탭
-3. **VoltageAlert** 찾아서 탭
+3. **HVPA** 찾아서 탭
 4. **제거** 탭
 5. 메시지가 나타나면 확인
 
@@ -578,7 +632,7 @@ VoltageAlert를 제거하려면:
 ### 개인정보 보호 및 보안
 
 **데이터 수집:**
-- VoltageAlert는 전압 판독값과 타임스탬프만 수집합니다
+- HVPA는 전압 판독값과 타임스탬프만 수집합니다
 - 모든 데이터는 기기에 로컬로 저장됩니다
 - 외부 서버로 데이터가 전송되지 않습니다
 - 블루투스 연결은 암호화됩니다
@@ -595,7 +649,7 @@ VoltageAlert를 제거하려면:
 **면책 조항:**
 이 앱은 보조 안전 도구입니다. 표준 안전 장비, 절차 또는 교육을 대체하지 않습니다. 고압 전선 근처에서 작업할 때는 항상 회사의 안전 프로토콜을 따르고 적절한 보호 장비를 착용하십시오.
 
-**Copyright © 2026 VoltageAlert**
+**Copyright © 2026 HVPA**
 모든 권리 보유.
 
 ---

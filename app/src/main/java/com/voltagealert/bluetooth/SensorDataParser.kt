@@ -126,24 +126,29 @@ object SensorDataParser {
     /**
      * Parse voltage data from BLE advertisement manufacturer-specific data.
      *
-     * Broadcast Mode Format (from manufacturer-specific data payload):
+     * Supports two formats:
+     * 1. ASCII text: "220V WARNING", "154KV WARNING", etc. (current ESSYSTEM firmware)
+     * 2. Binary: [VoltageCode] where 0x01=220V, 0x02=380V, etc. (future firmware)
+     *
      * The full manufacturer-specific data includes Company ID (2 bytes, little-endian)
      * followed by the payload. Android's ScanRecord.getManufacturerSpecificData()
-     * strips the Company ID, so we receive only the payload byte(s).
-     *
-     * Payload: [VoltageCode]
-     *   VoltageCode: 0x01=220V, 0x02=380V, 0x03=22.9KV, 0x04=154KV,
-     *                0x05=345KV, 0x06=500KV, 0x07=765KV
+     * strips the Company ID, so we receive only the payload bytes.
      *
      * @param manufacturerData The payload bytes after Company ID (from ScanRecord)
-     * @return VoltageReading if valid voltage code found, null otherwise
+     * @return VoltageReading if valid voltage data found, null otherwise
      */
     fun parseAdvertisementData(manufacturerData: ByteArray): VoltageReading? {
         if (manufacturerData.isEmpty()) {
             return null
         }
 
-        // The manufacturer data payload is just the voltage code byte
+        // Try ASCII text first (actual format from ESSYSTEM firmware: "154KV WARNING", etc.)
+        val asciiReading = parseAsciiPacket(manufacturerData)
+        if (asciiReading != null) {
+            return asciiReading
+        }
+
+        // Fall back to binary voltage code format
         val voltageCode = manufacturerData[0]
         val voltage = VoltageLevel.fromByteCode(voltageCode) ?: return null
 

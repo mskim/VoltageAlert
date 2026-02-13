@@ -195,12 +195,88 @@ class SensorDataParserTest {
     }
 
     @Test
-    fun `parseAdvertisementData should use first byte only`() {
-        // If manufacturer data has extra bytes, only the first byte is the voltage code
+    fun `parseAdvertisementData should parse binary with extra bytes`() {
+        // If manufacturer data has extra non-ASCII bytes, binary fallback should work
         val data = byteArrayOf(0x05, 0x00, 0xFF.toByte())
         val reading = SensorDataParser.parseAdvertisementData(data)
 
-        assertNotNull("Should parse first byte as voltage code", reading)
+        assertNotNull("Should parse binary voltage code", reading)
         assertEquals("Should be 345KV", VoltageLevel.VOLTAGE_345KV, reading?.voltage)
+    }
+
+    // === Broadcast Mode ASCII Advertisement Data Tests ===
+
+    @Test
+    fun `parseAdvertisementData should parse ASCII 220V WARNING`() {
+        val data = "220V WARNING".toByteArray(Charsets.US_ASCII)
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("ASCII '220V WARNING' should parse", reading)
+        assertEquals("Should be 220V", VoltageLevel.VOLTAGE_220V, reading?.voltage)
+    }
+
+    @Test
+    fun `parseAdvertisementData should parse ASCII 154KV WARNING`() {
+        val data = "154KV WARNING".toByteArray(Charsets.US_ASCII)
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("ASCII '154KV WARNING' should parse", reading)
+        assertEquals("Should be 154KV", VoltageLevel.VOLTAGE_154KV, reading?.voltage)
+    }
+
+    @Test
+    fun `parseAdvertisementData should parse ASCII 380V WARNING`() {
+        val data = "380V WARNING".toByteArray(Charsets.US_ASCII)
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("ASCII '380V WARNING' should parse", reading)
+        assertEquals("Should be 380V", VoltageLevel.VOLTAGE_380V, reading?.voltage)
+    }
+
+    @Test
+    fun `parseAdvertisementData should parse ASCII 22 point 9KV`() {
+        val data = "22.9KV WARNING".toByteArray(Charsets.US_ASCII)
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("ASCII '22.9KV WARNING' should parse", reading)
+        assertEquals("Should be 229KV", VoltageLevel.VOLTAGE_229KV, reading?.voltage)
+    }
+
+    @Test
+    fun `parseAdvertisementData should parse ASCII 345KV WARNING`() {
+        val data = "345KV WARNING".toByteArray(Charsets.US_ASCII)
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("ASCII '345KV WARNING' should parse", reading)
+        assertEquals("Should be 345KV", VoltageLevel.VOLTAGE_345KV, reading?.voltage)
+    }
+
+    @Test
+    fun `parseAdvertisementData should parse ASCII 500KV WARNING`() {
+        val data = "500KV WARNING".toByteArray(Charsets.US_ASCII)
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("ASCII '500KV WARNING' should parse", reading)
+        assertEquals("Should be 500KV", VoltageLevel.VOLTAGE_500KV, reading?.voltage)
+    }
+
+    @Test
+    fun `parseAdvertisementData should parse ASCII 765KV WARNING`() {
+        val data = "765KV WARNING".toByteArray(Charsets.US_ASCII)
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("ASCII '765KV WARNING' should parse", reading)
+        assertEquals("Should be 765KV", VoltageLevel.VOLTAGE_765KV, reading?.voltage)
+    }
+
+    @Test
+    fun `parseAdvertisementData ASCII should prefer over binary`() {
+        // "220V" in ASCII starts with byte 0x32 ('2'), which is binary for 380V
+        // ASCII parsing should take priority and correctly return 220V
+        val data = "220V WARNING".toByteArray(Charsets.US_ASCII)
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("Should parse as ASCII, not binary", reading)
+        assertEquals("Should be 220V (ASCII), not 380V (binary 0x32)", VoltageLevel.VOLTAGE_220V, reading?.voltage)
     }
 }

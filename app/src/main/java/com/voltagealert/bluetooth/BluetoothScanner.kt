@@ -95,15 +95,20 @@ class BluetoothScanner(private val context: Context) {
                     }
                 }
 
-                // Also check other manufacturer IDs for legacy detection
-                for (i in 0 until manufacturerData.size()) {
-                    val manufacturerId = manufacturerData.keyAt(i)
-                    if (manufacturerId == ESPRESSIF_COMPANY_ID) continue // Already handled above
-                    val data = manufacturerData.valueAt(i)
-                    val dataString = String(data, Charsets.UTF_8)
-                    if (dataString.contains("220V") || dataString.contains("WARNING") || dataString.contains("ST940")) {
-                        Log.d(TAG, "⚡ FOUND VOLTAGE DEVICE! ${device.address} - MfgID: $manufacturerId, Data: ${data.contentToString()}, String: $dataString")
-                        hasVoltageData = true
+                // Also check ALL other manufacturer IDs for voltage data
+                // (firmware may use a different Company ID than Espressif)
+                if (!hasVoltageData) {
+                    for (i in 0 until manufacturerData.size()) {
+                        val manufacturerId = manufacturerData.keyAt(i)
+                        if (manufacturerId == ESPRESSIF_COMPANY_ID) continue // Already handled above
+                        val data = manufacturerData.valueAt(i)
+                        val reading = SensorDataParser.parseAdvertisementData(data)
+                        if (reading != null) {
+                            Log.d(TAG, "⚡ BROADCAST VOLTAGE: ${reading.voltage} from ${device.address} MfgID: 0x${String.format("%04X", manufacturerId)} RSSI: $rssi")
+                            _broadcastReading.tryEmit(reading)
+                            hasVoltageData = true
+                            break
+                        }
                     }
                 }
             }
