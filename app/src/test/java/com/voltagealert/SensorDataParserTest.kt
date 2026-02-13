@@ -135,10 +135,44 @@ class SensorDataParserTest {
         assertArrayEquals("Identical inputs should produce identical packets", packet1, packet2)
     }
 
-    // === Broadcast Mode (Advertisement Data) Tests ===
+    // === Broadcast Mode: Framed Binary [0xAA][VoltageCode][0x55] Tests ===
 
     @Test
-    fun `parseAdvertisementData should parse valid voltage code`() {
+    fun `parseAdvertisementData should parse framed binary protocol`() {
+        // Firmware protocol: [0xAA][VoltageCode][0x55]
+        val data = byteArrayOf(0xAA.toByte(), 0x04, 0x55) // 154KV
+        val reading = SensorDataParser.parseAdvertisementData(data)
+
+        assertNotNull("Framed binary [AA 04 55] should parse", reading)
+        assertEquals("Should be 154KV", VoltageLevel.VOLTAGE_154KV, reading?.voltage)
+    }
+
+    @Test
+    fun `parseAdvertisementData should parse all framed voltage levels`() {
+        val expectedVoltages = mapOf(
+            0x01.toByte() to VoltageLevel.VOLTAGE_220V,
+            0x02.toByte() to VoltageLevel.VOLTAGE_380V,
+            0x03.toByte() to VoltageLevel.VOLTAGE_229KV,
+            0x04.toByte() to VoltageLevel.VOLTAGE_154KV,
+            0x05.toByte() to VoltageLevel.VOLTAGE_345KV,
+            0x06.toByte() to VoltageLevel.VOLTAGE_500KV,
+            0x07.toByte() to VoltageLevel.VOLTAGE_765KV
+        )
+
+        expectedVoltages.forEach { (code, expectedLevel) ->
+            val data = byteArrayOf(0xAA.toByte(), code, 0x55)
+            val reading = SensorDataParser.parseAdvertisementData(data)
+
+            assertNotNull("Framed code 0x${"%02X".format(code)} should parse", reading)
+            assertEquals("Framed code 0x${"%02X".format(code)} should map to $expectedLevel",
+                expectedLevel, reading?.voltage)
+        }
+    }
+
+    // === Broadcast Mode: Raw Binary (single byte, no framing) Tests ===
+
+    @Test
+    fun `parseAdvertisementData should parse raw single byte voltage code`() {
         val data = byteArrayOf(0x01) // 220V
         val reading = SensorDataParser.parseAdvertisementData(data)
 
@@ -147,7 +181,7 @@ class SensorDataParserTest {
     }
 
     @Test
-    fun `parseAdvertisementData should parse all dangerous voltage levels`() {
+    fun `parseAdvertisementData should parse all raw voltage levels`() {
         val expectedVoltages = mapOf(
             0x01.toByte() to VoltageLevel.VOLTAGE_220V,
             0x02.toByte() to VoltageLevel.VOLTAGE_380V,

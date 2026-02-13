@@ -126,13 +126,13 @@ object SensorDataParser {
     /**
      * Parse voltage data from BLE advertisement manufacturer-specific data.
      *
-     * Supports two formats:
-     * 1. ASCII text: "220V WARNING", "154KV WARNING", etc. (current ESSYSTEM firmware)
-     * 2. Binary: [VoltageCode] where 0x01=220V, 0x02=380V, etc. (future firmware)
+     * Supports three formats:
+     * 1. Framed binary: [0xAA][VoltageCode][0x55] (firmware protocol per our spec)
+     * 2. ASCII text: "220V WARNING", "154KV WARNING", etc.
+     * 3. Raw binary: [VoltageCode] (single byte, no framing)
      *
-     * The full manufacturer-specific data includes Company ID (2 bytes, little-endian)
-     * followed by the payload. Android's ScanRecord.getManufacturerSpecificData()
-     * strips the Company ID, so we receive only the payload bytes.
+     * Android's ScanRecord.getManufacturerSpecificData() strips the Company ID,
+     * so we receive only the payload bytes.
      *
      * @param manufacturerData The payload bytes after Company ID (from ScanRecord)
      * @return VoltageReading if valid voltage data found, null otherwise
@@ -142,17 +142,32 @@ object SensorDataParser {
             return null
         }
 
-        // Try ASCII text first (actual format from ESSYSTEM firmware: "154KV WARNING", etc.)
+        // Format 1: Framed binary [0xAA][VoltageCode][0x55]
+        // This is our firmware protocol - voltage code is at byte[1], not byte[0]
+        if (manufacturerData.size >= 3 &&
+            manufacturerData[0] == HEADER_BYTE &&
+            manufacturerData[manufacturerData.size - 1] == FOOTER_BYTE) {
+            val voltageCode = manufacturerData[1]
+            val voltage = VoltageLevel.fromByteCode(voltageCode)
+            if (voltage != null && voltage.isDangerous) {
+                return VoltageReading(
+                    voltage = voltage,
+                    timestamp = LocalDateTime.now(),
+                    sequenceNumber = 0,
+                    rawBytes = manufacturerData.copyOf()
+                )
+            }
+        }
+
+        // Format 2: ASCII text ("154KV WARNING", "220V WARNING", etc.)
         val asciiReading = parseAsciiPacket(manufacturerData)
         if (asciiReading != null) {
             return asciiReading
         }
 
-        // Fall back to binary voltage code format
+        // Format 3: Raw binary voltage code (single byte, no framing)
         val voltageCode = manufacturerData[0]
         val voltage = VoltageLevel.fromByteCode(voltageCode) ?: return null
-
-        // Only return readings for dangerous voltage levels (not diagnostic codes)
         if (!voltage.isDangerous) {
             return null
         }
