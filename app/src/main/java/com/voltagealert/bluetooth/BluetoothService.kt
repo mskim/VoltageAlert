@@ -49,10 +49,15 @@ class BluetoothService : Service() {
     private var scanner: BluetoothScanner? = null
     private var scanJob: Job? = null
     private var broadcastJob: Job? = null
+    private var debugLogJob: Job? = null
     private var scanCacheFlushJob: Job? = null
     private var autoConnectJob: Job? = null
     private var scanTimeoutJob: Job? = null
     private var readingTimeoutJob: Job? = null
+
+    // Debug log buffer: collects BLE scan record data for saving to file
+    private val debugLogBuffer = mutableListOf<String>()
+    private val maxDebugLogLines = 500
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -323,6 +328,15 @@ class BluetoothService : Service() {
     }
 
     /**
+     * Get BLE debug log lines for saving to file.
+     */
+    fun getDebugLog(): List<String> {
+        synchronized(debugLogBuffer) {
+            return debugLogBuffer.toList()
+        }
+    }
+
+    /**
      * Start scanning for voltage sensor devices.
      * Broadcast-only mode: reads voltage data directly from BLE advertisements.
      * No GATT connection needed - scan → read → alarm in 100-500ms.
@@ -391,10 +405,19 @@ class BluetoothService : Service() {
             }
         }
 
-        // No periodic flush or scan restart - let the scan run uninterrupted.
-        // flushPendingScanResults() on Samsung actually disrupts scanning,
-        // causing MORE missed detections than Samsung's deduplication alone.
-        // Aggressive scan settings (MATCH_MODE_AGGRESSIVE) handle the rest.
+        // Collect BLE debug log from scanner for saving to file
+        debugLogJob?.cancel()
+        debugLogJob = serviceScope.launch {
+            scanner?.debugLog?.collect { line ->
+                synchronized(debugLogBuffer) {
+                    debugLogBuffer.add(line)
+                    // Keep only the latest lines
+                    while (debugLogBuffer.size > maxDebugLogLines) {
+                        debugLogBuffer.removeAt(0)
+                    }
+                }
+            }
+        }
 
         // Track discovered devices for UI
         scanJob = serviceScope.launch {
@@ -416,6 +439,8 @@ class BluetoothService : Service() {
         scanJob = null
         broadcastJob?.cancel()
         broadcastJob = null
+        debugLogJob?.cancel()
+        debugLogJob = null
         scanCacheFlushJob?.cancel()
         scanCacheFlushJob = null
         autoConnectJob?.cancel()
@@ -443,6 +468,7 @@ class BluetoothService : Service() {
         super.onDestroy()
         readingTimeoutJob?.cancel()
         broadcastJob?.cancel()
+        debugLogJob?.cancel()
         scanCacheFlushJob?.cancel()
         autoRescanJob?.cancel()
         serviceScope.launch {

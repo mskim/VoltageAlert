@@ -120,14 +120,28 @@ class VoltageLogManager(private val context: Context) {
      * File format: HVPA#yyyyMMdd_HHmmss.log
      * Location: /storage/emulated/0/HVPA/
      *
+     * @param bleDebugLog Optional BLE scan debug log lines to append
      * @return The saved file path, or null if failed
      */
-    suspend fun saveLogsToFile(): String? {
+    suspend fun saveLogsToFile(bleDebugLog: List<String>? = null): String? {
         val entries = getVisibleLogs().first()
-        if (entries.isEmpty()) return null
+        if (entries.isEmpty() && bleDebugLog.isNullOrEmpty()) return null
 
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
         val fileName = "HVPA#$timestamp.log"
+
+        // Build log content: event log + BLE debug log
+        val content = buildString {
+            if (entries.isNotEmpty()) {
+                appendLine("=== Event Log ===")
+                entries.forEach { appendLine(it.getFormattedDisplay()) }
+            }
+            if (!bleDebugLog.isNullOrEmpty()) {
+                appendLine()
+                appendLine("=== BLE Debug Log ===")
+                bleDebugLog.forEach { appendLine(it) }
+            }
+        }
 
         // Save to /storage/emulated/0/HVPA/
         val hvpaDir = File(Environment.getExternalStorageDirectory(), "HVPA")
@@ -137,14 +151,14 @@ class VoltageLogManager(private val context: Context) {
         val file = File(hvpaDir, fileName)
 
         return try {
-            file.writeText(entries.joinToString("\n") { it.getFormattedDisplay() })
+            file.writeText(content)
             file.absolutePath
         } catch (e: Exception) {
             // Fallback to app-specific directory if root storage fails
             val fallbackDir = context.getExternalFilesDir(null) ?: return null
             val fallbackFile = File(fallbackDir, fileName)
             try {
-                fallbackFile.writeText(entries.joinToString("\n") { it.getFormattedDisplay() })
+                fallbackFile.writeText(content)
                 fallbackFile.absolutePath
             } catch (e2: Exception) {
                 null

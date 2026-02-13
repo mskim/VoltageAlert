@@ -194,7 +194,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performSaveLogs() {
-        viewModel.saveLogs { path ->
+        val bleDebugLog = bluetoothService?.getDebugLog()
+        viewModel.saveLogs(bleDebugLog) { path ->
             runOnUiThread {
                 if (path != null) {
                     Toast.makeText(this, getString(R.string.logs_saved, path), Toast.LENGTH_LONG).show()

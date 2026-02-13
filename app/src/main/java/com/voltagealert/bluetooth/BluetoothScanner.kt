@@ -51,6 +51,13 @@ class BluetoothScanner(private val context: Context) {
     private val _broadcastReading = MutableSharedFlow<VoltageReading>(extraBufferCapacity = 64)
     val broadcastReading: SharedFlow<VoltageReading> = _broadcastReading.asSharedFlow()
 
+    // Debug log: emits scan record details for saving to file
+    private val _debugLog = MutableSharedFlow<String>(extraBufferCapacity = 256)
+    val debugLog: SharedFlow<String> = _debugLog.asSharedFlow()
+
+    // Track latest parsed voltage for debug logging
+    private var _latestParsedVoltage: String? = null
+
     companion object {
         private const val TAG = "BluetoothScanner"
         // ST9401-UP / ESSYSTEM service UUID (confirmed by manufacturer)
@@ -87,9 +94,12 @@ class BluetoothScanner(private val context: Context) {
             // Log full scan record for debugging (only for our target device)
             val isTargetDevice = name != null && DEVICE_NAME_PREFIXES.any { name.startsWith(it, ignoreCase = true) }
             if (isTargetDevice && scanRecord != null) {
+                val ts = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS"))
                 val rawBytes = scanRecord.bytes
                 val rawHex = rawBytes?.joinToString(" ") { "%02X".format(it) } ?: "null"
-                Log.d(TAG, "📦 SCAN RECORD from $name (${device.address}): $rawHex")
+                val rawLog = "[$ts] SCAN $name (${device.address}) RSSI:$rssi RAW:$rawHex"
+                Log.d(TAG, rawLog)
+                _debugLog.tryEmit(rawLog)
 
                 val manufacturerData = scanRecord.manufacturerSpecificData
                 if (manufacturerData != null) {
@@ -98,7 +108,9 @@ class BluetoothScanner(private val context: Context) {
                         val mfgData = manufacturerData.valueAt(i)
                         val hex = mfgData.joinToString(" ") { "%02X".format(it) }
                         val ascii = String(mfgData, Charsets.US_ASCII).replace(Regex("[^\\x20-\\x7E]"), ".")
-                        Log.d(TAG, "  MFG[0x${"%04X".format(mfgId)}]: hex=[$hex] ascii=[$ascii]")
+                        val mfgLog = "[$ts]   MFG[0x${"%04X".format(mfgId)}]: hex=[$hex] ascii=[$ascii]"
+                        Log.d(TAG, mfgLog)
+                        _debugLog.tryEmit(mfgLog)
                     }
                 }
 
@@ -106,11 +118,14 @@ class BluetoothScanner(private val context: Context) {
                 if (serviceData != null) {
                     val hex = serviceData.joinToString(" ") { "%02X".format(it) }
                     val ascii = String(serviceData, Charsets.US_ASCII).replace(Regex("[^\\x20-\\x7E]"), ".")
-                    Log.d(TAG, "  SVC[$SERVICE_UUID]: hex=[$hex] ascii=[$ascii]")
+                    val svcLog = "[$ts]   SVC[FFF0]: hex=[$hex] ascii=[$ascii]"
+                    Log.d(TAG, svcLog)
+                    _debugLog.tryEmit(svcLog)
                 }
             }
 
             // Source 1: Manufacturer-specific data (all company IDs)
+            _latestParsedVoltage = null
             val manufacturerData = scanRecord?.manufacturerSpecificData
             if (manufacturerData != null && !hasVoltageData) {
                 for (i in 0 until manufacturerData.size()) {
@@ -118,7 +133,8 @@ class BluetoothScanner(private val context: Context) {
                     val data = manufacturerData.valueAt(i)
                     val reading = SensorDataParser.parseAdvertisementData(data)
                     if (reading != null) {
-                        Log.d(TAG, "⚡ VOLTAGE from MFG[0x${"%04X".format(manufacturerId)}]: ${reading.voltage}")
+                        _latestParsedVoltage = "${reading.voltage} from MFG[0x${"%04X".format(manufacturerId)}]"
+                        Log.d(TAG, "⚡ $_latestParsedVoltage")
                         _broadcastReading.tryEmit(reading)
                         hasVoltageData = true
                         break
@@ -132,7 +148,8 @@ class BluetoothScanner(private val context: Context) {
                 if (serviceData != null) {
                     val reading = SensorDataParser.parseAdvertisementData(serviceData)
                     if (reading != null) {
-                        Log.d(TAG, "⚡ VOLTAGE from SVC[$SERVICE_UUID]: ${reading.voltage}")
+                        _latestParsedVoltage = "${reading.voltage} from SVC[FFF0]"
+                        Log.d(TAG, "⚡ $_latestParsedVoltage")
                         _broadcastReading.tryEmit(reading)
                         hasVoltageData = true
                     }
@@ -145,17 +162,25 @@ class BluetoothScanner(private val context: Context) {
                 if (rawBytes != null) {
                     val reading = SensorDataParser.parseAdvertisementData(rawBytes)
                     if (reading != null) {
-                        Log.d(TAG, "⚡ VOLTAGE from RAW BYTES: ${reading.voltage}")
+                        _latestParsedVoltage = "${reading.voltage} from RAW"
+                        Log.d(TAG, "⚡ $_latestParsedVoltage")
                         _broadcastReading.tryEmit(reading)
                         hasVoltageData = true
                     }
                 }
             }
 
-            if (hasVoltageData) {
-                Log.d(TAG, "🎯 VOLTAGE DETECTED: $name (${device.address}) RSSI: $rssi")
-            } else if (isTargetDevice) {
-                Log.d(TAG, "📡 Target device found but no voltage data: $name (${device.address}) RSSI: $rssi")
+            if (isTargetDevice) {
+                val ts = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS"))
+                if (hasVoltageData) {
+                    val resultLog = "[$ts] => VOLTAGE: ${_latestParsedVoltage ?: "?"}"
+                    Log.d(TAG, resultLog)
+                    _debugLog.tryEmit(resultLog)
+                } else {
+                    val resultLog = "[$ts] => NO VOLTAGE DATA FOUND"
+                    Log.d(TAG, resultLog)
+                    _debugLog.tryEmit(resultLog)
+                }
             }
 
             // Add to discovered devices

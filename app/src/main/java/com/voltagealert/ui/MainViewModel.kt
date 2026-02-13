@@ -95,10 +95,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Save logs to file. Returns file path via callback.
+     * @param bleDebugLog Optional BLE scan debug log lines to include
      */
-    fun saveLogs(onResult: (String?) -> Unit) {
+    fun saveLogs(bleDebugLog: List<String>? = null, onResult: (String?) -> Unit) {
         viewModelScope.launch {
-            val path = logManager.saveLogsToFile()
+            val path = logManager.saveLogsToFile(bleDebugLog)
             onResult(path)
         }
     }
