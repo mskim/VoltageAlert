@@ -79,44 +79,83 @@ class BluetoothScanner(private val context: Context) {
                 UUID.fromString(it.uuid.toString())
             }
 
-            // Broadcast mode: check manufacturer-specific data for voltage code
+            // Broadcast mode: extract voltage from advertisement data
+            // Try multiple sources: manufacturer data, service data, raw bytes
             val scanRecord = result.scanRecord
-            val manufacturerData = scanRecord?.manufacturerSpecificData
             var hasVoltageData = false
-            if (manufacturerData != null) {
-                // Check Espressif Company ID (0x02E5) for broadcast voltage data
-                val espressifData = manufacturerData.get(ESPRESSIF_COMPANY_ID)
-                if (espressifData != null) {
-                    val reading = SensorDataParser.parseAdvertisementData(espressifData)
+
+            // Log full scan record for debugging (only for our target device)
+            val isTargetDevice = name != null && DEVICE_NAME_PREFIXES.any { name.startsWith(it, ignoreCase = true) }
+            if (isTargetDevice && scanRecord != null) {
+                val rawBytes = scanRecord.bytes
+                val rawHex = rawBytes?.joinToString(" ") { "%02X".format(it) } ?: "null"
+                Log.d(TAG, "📦 SCAN RECORD from $name (${device.address}): $rawHex")
+
+                val manufacturerData = scanRecord.manufacturerSpecificData
+                if (manufacturerData != null) {
+                    for (i in 0 until manufacturerData.size()) {
+                        val mfgId = manufacturerData.keyAt(i)
+                        val mfgData = manufacturerData.valueAt(i)
+                        val hex = mfgData.joinToString(" ") { "%02X".format(it) }
+                        val ascii = String(mfgData, Charsets.US_ASCII).replace(Regex("[^\\x20-\\x7E]"), ".")
+                        Log.d(TAG, "  MFG[0x${"%04X".format(mfgId)}]: hex=[$hex] ascii=[$ascii]")
+                    }
+                }
+
+                val serviceData = scanRecord.getServiceData(ParcelUuid(SERVICE_UUID))
+                if (serviceData != null) {
+                    val hex = serviceData.joinToString(" ") { "%02X".format(it) }
+                    val ascii = String(serviceData, Charsets.US_ASCII).replace(Regex("[^\\x20-\\x7E]"), ".")
+                    Log.d(TAG, "  SVC[$SERVICE_UUID]: hex=[$hex] ascii=[$ascii]")
+                }
+            }
+
+            // Source 1: Manufacturer-specific data (all company IDs)
+            val manufacturerData = scanRecord?.manufacturerSpecificData
+            if (manufacturerData != null && !hasVoltageData) {
+                for (i in 0 until manufacturerData.size()) {
+                    val manufacturerId = manufacturerData.keyAt(i)
+                    val data = manufacturerData.valueAt(i)
+                    val reading = SensorDataParser.parseAdvertisementData(data)
                     if (reading != null) {
-                        Log.d(TAG, "⚡ BROADCAST VOLTAGE: ${reading.voltage} from ${device.address} RSSI: $rssi")
+                        Log.d(TAG, "⚡ VOLTAGE from MFG[0x${"%04X".format(manufacturerId)}]: ${reading.voltage}")
+                        _broadcastReading.tryEmit(reading)
+                        hasVoltageData = true
+                        break
+                    }
+                }
+            }
+
+            // Source 2: Service data for our service UUID (FFF0)
+            if (!hasVoltageData && scanRecord != null) {
+                val serviceData = scanRecord.getServiceData(ParcelUuid(SERVICE_UUID))
+                if (serviceData != null) {
+                    val reading = SensorDataParser.parseAdvertisementData(serviceData)
+                    if (reading != null) {
+                        Log.d(TAG, "⚡ VOLTAGE from SVC[$SERVICE_UUID]: ${reading.voltage}")
                         _broadcastReading.tryEmit(reading)
                         hasVoltageData = true
                     }
                 }
+            }
 
-                // Also check ALL other manufacturer IDs for voltage data
-                // (firmware may use a different Company ID than Espressif)
-                if (!hasVoltageData) {
-                    for (i in 0 until manufacturerData.size()) {
-                        val manufacturerId = manufacturerData.keyAt(i)
-                        if (manufacturerId == ESPRESSIF_COMPANY_ID) continue // Already handled above
-                        val data = manufacturerData.valueAt(i)
-                        val reading = SensorDataParser.parseAdvertisementData(data)
-                        if (reading != null) {
-                            Log.d(TAG, "⚡ BROADCAST VOLTAGE: ${reading.voltage} from ${device.address} MfgID: 0x${String.format("%04X", manufacturerId)} RSSI: $rssi")
-                            _broadcastReading.tryEmit(reading)
-                            hasVoltageData = true
-                            break
-                        }
+            // Source 3: Raw scan record bytes (last resort - search for voltage text)
+            if (!hasVoltageData && scanRecord != null) {
+                val rawBytes = scanRecord.bytes
+                if (rawBytes != null) {
+                    val reading = SensorDataParser.parseAdvertisementData(rawBytes)
+                    if (reading != null) {
+                        Log.d(TAG, "⚡ VOLTAGE from RAW BYTES: ${reading.voltage}")
+                        _broadcastReading.tryEmit(reading)
+                        hasVoltageData = true
                     }
                 }
             }
 
             if (hasVoltageData) {
-                Log.d(TAG, "🎯 VOLTAGE SENSOR DETECTED: $name (${device.address}) RSSI: $rssi")
-            } else {
-                Log.d(TAG, "Device found: $name (${device.address}) RSSI: $rssi")
+                Log.d(TAG, "🎯 VOLTAGE DETECTED: $name (${device.address}) RSSI: $rssi")
+            } else if (isTargetDevice) {
+                Log.d(TAG, "📡 Target device found but no voltage data: $name (${device.address}) RSSI: $rssi")
             }
 
             // Add to discovered devices
