@@ -56,16 +56,8 @@ enum class VoltageLevel(
         detectionInvertedImageRes = R.drawable.voltage_345kv_detection_inverted,
         isDangerous = true
     ),
-    VOLTAGE_500KV(
-        byteCode = 0x06,
-        displayNameRes = R.string.voltage_500kv,
-        settingImageRes = R.drawable.voltage_500kv_setting,
-        detectionImageRes = R.drawable.voltage_500kv_detection,
-        detectionInvertedImageRes = R.drawable.voltage_500kv_detection_inverted,
-        isDangerous = true
-    ),
     VOLTAGE_765KV(
-        byteCode = 0x07,
+        byteCode = 0x06,
         displayNameRes = R.string.voltage_765kv,
         settingImageRes = R.drawable.voltage_765kv_setting,
         detectionImageRes = R.drawable.voltage_765kv_detection,

@@ -20,7 +20,6 @@ class VoltageLevelTest {
         assertTrue("154KV should be dangerous", VoltageLevel.VOLTAGE_154KV.isDangerous)
         assertTrue("229KV should be dangerous", VoltageLevel.VOLTAGE_229KV.isDangerous)
         assertTrue("345KV should be dangerous", VoltageLevel.VOLTAGE_345KV.isDangerous)
-        assertTrue("500KV should be dangerous", VoltageLevel.VOLTAGE_500KV.isDangerous)
         assertTrue("765KV should be dangerous", VoltageLevel.VOLTAGE_765KV.isDangerous)
     }
 
@@ -37,8 +36,7 @@ class VoltageLevelTest {
         assertEquals(VoltageLevel.VOLTAGE_229KV, VoltageLevel.fromByteCode(0x03))
         assertEquals(VoltageLevel.VOLTAGE_154KV, VoltageLevel.fromByteCode(0x04))
         assertEquals(VoltageLevel.VOLTAGE_345KV, VoltageLevel.fromByteCode(0x05))
-        assertEquals(VoltageLevel.VOLTAGE_500KV, VoltageLevel.fromByteCode(0x06))
-        assertEquals(VoltageLevel.VOLTAGE_765KV, VoltageLevel.fromByteCode(0x07))
+        assertEquals(VoltageLevel.VOLTAGE_765KV, VoltageLevel.fromByteCode(0x06))
     }
 
     @Test
@@ -55,7 +53,6 @@ class VoltageLevelTest {
         assertTrue("Should contain 154KV", dangerousLevels.contains(VoltageLevel.VOLTAGE_154KV))
         assertTrue("Should contain 229KV", dangerousLevels.contains(VoltageLevel.VOLTAGE_229KV))
         assertTrue("Should contain 345KV", dangerousLevels.contains(VoltageLevel.VOLTAGE_345KV))
-        assertTrue("Should contain 500KV", dangerousLevels.contains(VoltageLevel.VOLTAGE_500KV))
         assertTrue("Should contain 765KV", dangerousLevels.contains(VoltageLevel.VOLTAGE_765KV))
 
         assertFalse("Should not contain 220V", dangerousLevels.contains(VoltageLevel.VOLTAGE_220V))

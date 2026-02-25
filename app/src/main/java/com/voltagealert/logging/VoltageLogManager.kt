@@ -176,7 +176,6 @@ class VoltageLogManager(private val context: Context) {
             VoltageLevel.VOLTAGE_229KV -> "22.9KV"
             VoltageLevel.VOLTAGE_154KV -> "154KV"
             VoltageLevel.VOLTAGE_345KV -> "345KV"
-            VoltageLevel.VOLTAGE_500KV -> "500KV"
             VoltageLevel.VOLTAGE_765KV -> "765KV"
             VoltageLevel.DIAGNOSTIC_OK -> "DIAG_OK"
             VoltageLevel.DIAGNOSTIC_NG -> "DIAG_NG"

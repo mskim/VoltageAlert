@@ -9,7 +9,6 @@
     <string name="voltage_229kv" translatable="false">22.9KV</string>
     <string name="voltage_154kv" translatable="false">154KV</string>
     <string name="voltage_345kv" translatable="false">345KV</string>
-    <string name="voltage_500kv" translatable="false">500KV</string>
     <string name="voltage_765kv" translatable="false">765KV</string>
     <string name="diagnostic_ok">Diagnostic OK</string>
     <string name="diagnostic_ng">Diagnostic NG</string>

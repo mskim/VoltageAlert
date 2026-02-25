@@ -64,8 +64,7 @@ object SensorDataParser {
                 value == "380" && unit == "V" -> VoltageLevel.VOLTAGE_380V
                 value == "154" && unit == "KV" -> VoltageLevel.VOLTAGE_154KV
                 (value == "229" || value == "22.9") && unit == "KV" -> VoltageLevel.VOLTAGE_229KV
-                value == "345" && unit == "KV" -> VoltageLevel.VOLTAGE_345KV
-                value == "500" && unit == "KV" -> VoltageLevel.VOLTAGE_500KV
+                (value == "345" || value == "245") && unit == "KV" -> VoltageLevel.VOLTAGE_345KV
                 value == "765" && unit == "KV" -> VoltageLevel.VOLTAGE_765KV
                 else -> return null
             }

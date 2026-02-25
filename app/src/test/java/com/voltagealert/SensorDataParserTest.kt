@@ -155,8 +155,7 @@ class SensorDataParserTest {
             0x03.toByte() to VoltageLevel.VOLTAGE_229KV,
             0x04.toByte() to VoltageLevel.VOLTAGE_154KV,
             0x05.toByte() to VoltageLevel.VOLTAGE_345KV,
-            0x06.toByte() to VoltageLevel.VOLTAGE_500KV,
-            0x07.toByte() to VoltageLevel.VOLTAGE_765KV
+            0x06.toByte() to VoltageLevel.VOLTAGE_765KV
         )
 
         expectedVoltages.forEach { (code, expectedLevel) ->
@@ -188,8 +187,7 @@ class SensorDataParserTest {
             0x03.toByte() to VoltageLevel.VOLTAGE_229KV,
             0x04.toByte() to VoltageLevel.VOLTAGE_154KV,
             0x05.toByte() to VoltageLevel.VOLTAGE_345KV,
-            0x06.toByte() to VoltageLevel.VOLTAGE_500KV,
-            0x07.toByte() to VoltageLevel.VOLTAGE_765KV
+            0x06.toByte() to VoltageLevel.VOLTAGE_765KV
         )
 
         expectedVoltages.forEach { (code, expectedLevel) ->
@@ -286,12 +284,12 @@ class SensorDataParserTest {
     }
 
     @Test
-    fun `parseAdvertisementData should parse ASCII 500KV WARNING`() {
-        val data = "500KV WARNING".toByteArray(Charsets.US_ASCII)
+    fun `parseAdvertisementData should parse ASCII 245KV WARNING as 345KV`() {
+        val data = "245KV WARNING".toByteArray(Charsets.US_ASCII)
         val reading = SensorDataParser.parseAdvertisementData(data)
 
-        assertNotNull("ASCII '500KV WARNING' should parse", reading)
-        assertEquals("Should be 500KV", VoltageLevel.VOLTAGE_500KV, reading?.voltage)
+        assertNotNull("ASCII '245KV WARNING' should parse", reading)
+        assertEquals("Should be 345KV", VoltageLevel.VOLTAGE_345KV, reading?.voltage)
     }
 
     @Test
