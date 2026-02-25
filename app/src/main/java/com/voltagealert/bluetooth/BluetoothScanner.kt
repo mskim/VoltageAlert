@@ -156,20 +156,6 @@ class BluetoothScanner(private val context: Context) {
                 }
             }
 
-            // Source 3: Raw scan record bytes (last resort - search for voltage text)
-            if (!hasVoltageData && scanRecord != null) {
-                val rawBytes = scanRecord.bytes
-                if (rawBytes != null) {
-                    val reading = SensorDataParser.parseAdvertisementData(rawBytes)
-                    if (reading != null) {
-                        _latestParsedVoltage = "${reading.voltage} from RAW"
-                        Log.d(TAG, "⚡ $_latestParsedVoltage")
-                        _broadcastReading.tryEmit(reading)
-                        hasVoltageData = true
-                    }
-                }
-            }
-
             if (isTargetDevice) {
                 val ts = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS"))
                 if (hasVoltageData) {
