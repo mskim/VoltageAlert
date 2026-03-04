@@ -13,11 +13,14 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Binder
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.voltagealert.R
 import com.voltagealert.alert.AlertCoordinator
+import com.voltagealert.logging.VoltageLogManager
 import com.voltagealert.models.ConnectionStatus
+import com.voltagealert.models.VoltageLevel
 import com.voltagealert.models.VoltageReading
 import com.voltagealert.testing.MockBluetoothDevice
 import com.voltagealert.ui.MainActivity
@@ -42,6 +45,7 @@ import java.util.UUID
 class BluetoothService : Service() {
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private var bleManager: SensorBleManager? = null
     private var mockJob: Job? = null
@@ -54,6 +58,11 @@ class BluetoothService : Service() {
     private var autoConnectJob: Job? = null
     private var scanTimeoutJob: Job? = null
     private var readingTimeoutJob: Job? = null
+
+    // Alert triggering from service (runs even when Activity is in background/screen off)
+    private lateinit var alertCoordinator: AlertCoordinator
+    private lateinit var logManager: VoltageLogManager
+    private var lastAlertedVoltage: VoltageLevel? = null
 
     // Debug log buffer: collects BLE scan record data for saving to file
     private val debugLogBuffer = mutableListOf<String>()
@@ -95,14 +104,35 @@ class BluetoothService : Service() {
         Log.d(TAG, "Service created")
         createNotificationChannel()
         scanner = BluetoothScanner(this)
+
+        // Initialize alert and logging (runs in service, independent of Activity lifecycle)
+        alertCoordinator = AlertCoordinator.getInstance(applicationContext)
+        logManager = VoltageLogManager(applicationContext)
+
+        // Acquire wake lock to keep CPU running when screen is off
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "VoltageAlert::BluetoothServiceWakeLock"
+        ).apply {
+            acquire(10*60*60*1000L) // 10 hours timeout as safety net
+        }
+        Log.d(TAG, "Wake lock acquired - service will run even when phone sleeps")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "Service started")
+        Log.d(TAG, "Service started (intent: ${intent?.action}, startId: $startId)")
 
-        val notification = createNotification("Initializing...")
+        val notification = createNotification("Monitoring for high voltage...")
         startForeground(NOTIFICATION_ID, notification)
 
+        // If service was killed and restarted, automatically start scanning
+        if (intent == null) {
+            Log.d(TAG, "Service restarted after being killed - auto-starting scan")
+            startScanning(autoConnect = true)
+        }
+
+        // START_STICKY ensures service restarts if killed by system
         return START_STICKY
     }
 
@@ -161,6 +191,9 @@ class BluetoothService : Service() {
                 _latestReading.value = reading
                 _errorCount.value = 0
 
+                // Trigger alert + log from service (works even with screen off / app in background)
+                handleReading(reading)
+
                 // Restart 2-second reading timeout
                 // When sensor stops sending, this fires and clears the reading + stops alarm
                 readingTimeoutJob?.cancel()
@@ -168,7 +201,7 @@ class BluetoothService : Service() {
                     delay(2000)
                     Log.d(TAG, "⏱️ Reading timeout - sensor stopped sending")
                     _latestReading.value = null
-                    // Stop alarm directly from service (MainActivity might be paused behind AlertActivity)
+                    clearReadingState()
                     stopAlertFromService()
                 }
             },
@@ -179,6 +212,7 @@ class BluetoothService : Service() {
                     // Clear reading and stop alarm immediately on disconnect
                     readingTimeoutJob?.cancel()
                     _latestReading.value = null
+                    clearReadingState()
                     stopAlertFromService()
                     Log.d(TAG, "🔴 BLE disconnected - cleared reading, stopped alarm")
                     if (!useMockMode) {
@@ -199,14 +233,48 @@ class BluetoothService : Service() {
      */
     private fun stopAlertFromService() {
         try {
-            val coordinator = AlertCoordinator.getInstance(this@BluetoothService)
-            if (coordinator.isAlertActive()) {
+            if (alertCoordinator.isAlertActive()) {
                 Log.d(TAG, "🔇 Auto-stopping alert from service")
-                coordinator.stopAllAlerts()
+                alertCoordinator.stopAllAlerts()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to stop alert: ${e.message}")
         }
+    }
+
+    /**
+     * Handle a new voltage reading: trigger alert + log.
+     * Runs in the service so it works even when screen is off or app is in background.
+     * Previously this logic was in MainActivity (lifecycle-bound), which caused
+     * alerts to NOT fire when screen was off or user switched apps.
+     */
+    private fun handleReading(reading: VoltageReading) {
+        // Trigger alert if dangerous AND different from last alerted voltage
+        if (reading.voltage.isDangerous && reading.voltage != lastAlertedVoltage) {
+            lastAlertedVoltage = reading.voltage
+            Log.d(TAG, "🚨 Triggering alert from service: ${reading.voltage}")
+            alertCoordinator.triggerAlert(reading.voltage)
+        } else if (!reading.voltage.isDangerous) {
+            lastAlertedVoltage = null
+        }
+
+        // Log the reading
+        serviceScope.launch {
+            try {
+                logManager.insertReading(reading)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to log reading: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Clear reading state: reset alert tracking and duplicate filter.
+     * Called when sensor stops sending or BLE disconnects.
+     */
+    private fun clearReadingState() {
+        lastAlertedVoltage = null
+        logManager.resetDuplicateFilter()
     }
 
     /**
@@ -380,6 +448,9 @@ class BluetoothService : Service() {
                 _latestReading.value = reading
                 _errorCount.value = 0
 
+                // Trigger alert + log from service (works even with screen off / app in background)
+                handleReading(reading)
+
                 // Update status on first broadcast received
                 if (_connectionStatus.value == ConnectionStatus.SCANNING) {
                     _connectionStatus.value = ConnectionStatus.CONNECTED
@@ -394,6 +465,7 @@ class BluetoothService : Service() {
                     delay(2000)
                     Log.d(TAG, "⏱️ Broadcast timeout - sensor stopped")
                     _latestReading.value = null
+                    clearReadingState()
                     stopAlertFromService()
                     // Revert status to scanning (scan stays running continuously)
                     if (scanner?.isScanning?.value == true) {
@@ -474,6 +546,19 @@ class BluetoothService : Service() {
         serviceScope.launch {
             cleanupBleManager()
         }
+
+        // Release wake lock
+        try {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(TAG, "Wake lock released")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing wake lock: ${e.message}")
+        }
+
         Log.d(TAG, "Service destroyed")
     }
 
@@ -523,10 +608,13 @@ class BluetoothService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.service_channel_name),
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_HIGH  // HIGH priority for life-critical app
         ).apply {
             description = getString(R.string.service_channel_description)
             setShowBadge(false)
+            // Disable sound for persistent notification
+            setSound(null, null)
+            enableVibration(false)
         }
 
         val notificationManager = getSystemService(NotificationManager::class.java)
@@ -547,6 +635,9 @@ class BluetoothService : Service() {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH) // HIGH priority for pre-O devices
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 

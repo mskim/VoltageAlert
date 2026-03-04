@@ -63,25 +63,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Update latest reading and log it (called by MainActivity when BluetoothService reports new reading).
+     * Update latest reading for UI display.
+     * Logging and alert triggering are now handled by BluetoothService
+     * so they work even when the screen is off or app is in background.
      */
-    fun updateReading(reading: VoltageReading) {
+    fun updateLatestReading(reading: VoltageReading?) {
         _latestReading.value = reading
-
-        // Log the reading
-        viewModelScope.launch {
-            logManager.insertReading(reading)
-        }
-    }
-
-    /**
-     * Clear latest reading (sensor stopped sending or BLE disconnected).
-     * Resets the reading so the next detection triggers a fresh alarm.
-     * Also resets the duplicate filter so the next detection logs fresh.
-     */
-    fun clearReading() {
-        _latestReading.value = null
-        logManager.resetDuplicateFilter()
     }
 
     /**

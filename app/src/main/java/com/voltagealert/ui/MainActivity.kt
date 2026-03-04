@@ -7,9 +7,12 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import java.util.Locale
 import android.view.View
@@ -50,7 +53,6 @@ class MainActivity : AppCompatActivity() {
     private var isBound = false
     private lateinit var alertCoordinator: AlertCoordinator
     private val logAdapter = LogAdapter()
-    private var lastAlertedVoltage: VoltageLevel? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -227,7 +229,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // Observe latest reading
+                // Observe latest reading (UI updates only - alerts are triggered by BluetoothService)
                 launch {
                     viewModel.latestReading.collect { reading ->
                         if (reading != null) {
@@ -243,26 +245,10 @@ class MainActivity : AppCompatActivity() {
                                     ContextCompat.getColor(this@MainActivity, R.color.danger_red)
                             }
                             binding.voltageCard.setStrokeColor(cardColor)
-
-                            // Trigger alert if dangerous AND different from last alerted voltage
-                            if (reading.voltage.isDangerous && reading.voltage != lastAlertedVoltage) {
-                                lastAlertedVoltage = reading.voltage
-                                alertCoordinator.triggerAlert(reading.voltage)
-                            } else if (!reading.voltage.isDangerous) {
-                                // Reset last alerted voltage when safe voltage detected
-                                lastAlertedVoltage = null
-                            }
                         } else {
                             binding.tvCurrentVoltage.text = getString(R.string.no_voltage_detected)
                             // Reset to red when no voltage
                             binding.voltageCard.setStrokeColor(ContextCompat.getColor(this@MainActivity, R.color.danger_red))
-                            lastAlertedVoltage = null
-
-                            // Auto-stop any active alert (sensor stopped sending)
-                            if (alertCoordinator.isAlertActive()) {
-                                Log.d("MainActivity", "🔇 Auto-stopping alert (no voltage data)")
-                                alertCoordinator.stopAllAlerts()
-                            }
                         }
                     }
                 }
@@ -303,16 +289,10 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    // Observe readings
+                    // Observe readings (for UI display only - alerts/logging handled by service)
                     launch {
                         service.latestReading.collect { reading ->
-                            if (reading != null) {
-                                viewModel.updateReading(reading)
-                            } else {
-                                // CRITICAL: Forward null to ViewModel so lastAlertedVoltage resets
-                                // Without this, same voltage won't trigger alarm on second detection
-                                viewModel.clearReading()
-                            }
+                            viewModel.updateLatestReading(reading)
                         }
                     }
 
@@ -366,9 +346,58 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (missingPermissions.isEmpty()) {
-            startBluetoothService()
+            // Check battery optimization before starting service
+            checkBatteryOptimization()
         } else {
             permissionLauncher.launch(missingPermissions.toTypedArray())
+        }
+    }
+
+    private fun checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+            val packageName = packageName
+
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                // App is not exempted from battery optimization, request exemption
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Battery Optimization")
+                    .setMessage("This app needs to run continuously to monitor high voltage.\n\nPlease disable battery optimization for reliable background operation.")
+                    .setPositiveButton("Allow") { _, _ ->
+                        try {
+                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = Uri.parse("package:$packageName")
+                            }
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Cannot open battery optimization settings: ${e.message}")
+                            // Fallback to general battery optimization settings
+                            try {
+                                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                startActivity(intent)
+                            } catch (e2: Exception) {
+                                Log.e("MainActivity", "Cannot open battery settings: ${e2.message}")
+                            }
+                        }
+                        // Start service anyway
+                        startBluetoothService()
+                    }
+                    .setNegativeButton("Later") { _, _ ->
+                        // Start service anyway but warn user
+                        Toast.makeText(this,
+                            "Warning: App may not work reliably in background without battery optimization exemption",
+                            Toast.LENGTH_LONG).show()
+                        startBluetoothService()
+                    }
+                    .setCancelable(false)
+                    .show()
+            } else {
+                // Already exempted, start service directly
+                startBluetoothService()
+            }
+        } else {
+            // Pre-Marshmallow, no battery optimization
+            startBluetoothService()
         }
     }
 
