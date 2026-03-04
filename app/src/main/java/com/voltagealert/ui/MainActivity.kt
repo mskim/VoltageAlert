@@ -165,6 +165,18 @@ class MainActivity : AppCompatActivity() {
             // TODO: Open SettingsActivity
         }
 
+        // Quit button - stop service and exit completely
+        binding.btnQuit.setOnClickListener {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.quit_confirm_title)
+                .setMessage(R.string.quit_confirm_message)
+                .setPositiveButton(R.string.ok) { _, _ ->
+                    quitApp()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+
         // Scan button - start Bluetooth scanning
         binding.btnScan.setOnClickListener {
             bluetoothService?.startScanning(autoConnect = true)
@@ -419,6 +431,33 @@ class MainActivity : AppCompatActivity() {
             }
             .setCancelable(false)
             .show()
+    }
+
+    /**
+     * Fully quit the app: stop alerts, stop foreground service, unbind, and finish.
+     */
+    private fun quitApp() {
+        Log.d("MainActivity", "Quitting app - stopping service and exiting")
+
+        // Stop any active alerts
+        alertCoordinator.stopAllAlerts()
+
+        // Stop scanning
+        bluetoothService?.stopScanning()
+        bluetoothService?.disconnect()
+
+        // Unbind from service
+        if (isBound) {
+            unbindService(serviceConnection)
+            isBound = false
+        }
+
+        // Stop the foreground service
+        val intent = Intent(this, BluetoothService::class.java)
+        stopService(intent)
+
+        // Finish this activity
+        finishAffinity()
     }
 
     override fun onDestroy() {

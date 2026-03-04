@@ -226,6 +226,18 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Quit Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnQuit"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:text="@string/quit_app"
+                android:textColor="@color/danger_red"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                app:strokeColor="@color/danger_red"
+                app:cornerRadius="8dp" />
+
             <!-- Event Log Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

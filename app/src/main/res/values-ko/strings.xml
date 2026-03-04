@@ -34,9 +34,18 @@
     <string name="alert_warning">⚠ 위험 - 후퇴하세요 ⚠</string>
     <string name="alert_dismiss">확인</string>
 
+    <!-- Quit -->
+    <string name="quit_app">모니터링 종료</string>
+    <string name="quit_confirm_title">모니터링을 종료하시겠습니까?</string>
+    <string name="quit_confirm_message">모든 전압 모니터링과 경보가 중단됩니다.\n\n고압 접근 경고를 더 이상 받을 수 없습니다.</string>
+
     <!-- Service -->
     <string name="service_channel_name">전압 모니터링</string>
     <string name="service_channel_description">전압 센서 지속 모니터링</string>
+
+    <!-- Alert notification channel -->
+    <string name="alert_channel_name">전압 경보</string>
+    <string name="alert_channel_description">고압 접근 위험 경보</string>
 
     <!-- Permissions -->
     <string name="permission_bluetooth_title">블루투스 권한 필요</string>

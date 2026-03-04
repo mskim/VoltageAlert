@@ -37,9 +37,18 @@
     <string name="alert_warning">⚠ DANGER - STAY BACK ⚠</string>
     <string name="alert_dismiss">OK</string>
 
+    <!-- Quit -->
+    <string name="quit_app">Quit Monitoring</string>
+    <string name="quit_confirm_title">Quit Monitoring?</string>
+    <string name="quit_confirm_message">This will stop all voltage monitoring and alerts.\n\nThe app will no longer warn you of high voltage.</string>
+
     <!-- Service -->
     <string name="service_channel_name">Voltage Monitoring</string>
     <string name="service_channel_description">Continuous monitoring of voltage sensor</string>
+
+    <!-- Alert notification channel -->
+    <string name="alert_channel_name">Voltage Alerts</string>
+    <string name="alert_channel_description">High voltage danger alerts</string>
 
     <!-- Permissions -->
     <string name="permission_bluetooth_title">Bluetooth Permission Required</string>
