@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.app.NotificationManager
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
@@ -414,9 +415,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startBluetoothService() {
+        // Check full-screen intent permission (Android 14+)
+        // Without this, alert screen may not show (only heads-up notification)
+        checkFullScreenIntentPermission()
+
         val intent = Intent(this, BluetoothService::class.java)
         startForegroundService(intent)
         bindService(intent, serviceConnection, BIND_AUTO_CREATE)
+    }
+
+    /**
+     * On Android 14+, USE_FULL_SCREEN_INTENT may be revoked by the user.
+     * Prompt them to enable it for reliable alert screen display.
+     */
+    private fun checkFullScreenIntentPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            if (!notificationManager.canUseFullScreenIntent()) {
+                Log.w("MainActivity", "Full-screen intent permission not granted")
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Cannot open full-screen intent settings: ${e.message}")
+                }
+            }
+        }
     }
 
     private fun showPermissionDeniedDialog() {

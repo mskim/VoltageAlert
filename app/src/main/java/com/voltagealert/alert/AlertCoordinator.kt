@@ -57,8 +57,12 @@ class AlertCoordinator private constructor(private val context: Context) {
     /**
      * Trigger all alert modes for a dangerous voltage detection.
      *
-     * Uses full-screen intent notification to launch AlertActivity.
-     * This works on Android 15 where direct startActivity from service is blocked.
+     * Uses two methods to ensure AlertActivity always shows:
+     * 1. Direct startActivity() - works when app is in foreground (all Android versions)
+     * 2. Full-screen intent notification - works when screen is off/locked (Android 10+)
+     *
+     * On Android 15, direct startActivity from service may be blocked,
+     * so the notification serves as fallback.
      *
      * @param voltage The detected voltage level
      */
@@ -82,10 +86,19 @@ class AlertCoordinator private constructor(private val context: Context) {
         // Start haptic alert
         hapticManager.start()
 
-        // Launch AlertActivity via full-screen intent notification.
-        // On Android 10+, direct startActivity from background is restricted.
-        // On Android 15, it's fully blocked even from foreground services.
-        // Full-screen intent notification is the official Android pattern for alarms.
+        // Method 1: Direct activity launch (works when app is in foreground)
+        try {
+            val intent = Intent(context, AlertActivity::class.java).apply {
+                putExtra(AlertActivity.EXTRA_VOLTAGE_LEVEL, voltage.name)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            context.startActivity(intent)
+            Log.d(TAG, "Direct activity launch succeeded")
+        } catch (e: Exception) {
+            Log.w(TAG, "Direct activity launch failed: ${e.message}")
+        }
+
+        // Method 2: Full-screen intent notification (fallback for screen off / Android 15)
         showAlertNotification(voltage)
     }
 
