@@ -5,14 +5,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.app.NotificationManager
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import java.util.Locale
@@ -359,90 +357,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (missingPermissions.isEmpty()) {
-            // Check battery optimization before starting service
-            checkBatteryOptimization()
+            startBluetoothService()
         } else {
             permissionLauncher.launch(missingPermissions.toTypedArray())
         }
     }
 
-    private fun checkBatteryOptimization() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-            val packageName = packageName
-
-            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
-                // App is not exempted from battery optimization, request exemption
-                MaterialAlertDialogBuilder(this)
-                    .setTitle("Battery Optimization")
-                    .setMessage("This app needs to run continuously to monitor high voltage.\n\nPlease disable battery optimization for reliable background operation.")
-                    .setPositiveButton("Allow") { _, _ ->
-                        try {
-                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                data = Uri.parse("package:$packageName")
-                            }
-                            startActivity(intent)
-                        } catch (e: Exception) {
-                            Log.e("MainActivity", "Cannot open battery optimization settings: ${e.message}")
-                            // Fallback to general battery optimization settings
-                            try {
-                                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                                startActivity(intent)
-                            } catch (e2: Exception) {
-                                Log.e("MainActivity", "Cannot open battery settings: ${e2.message}")
-                            }
-                        }
-                        // Start service anyway
-                        startBluetoothService()
-                    }
-                    .setNegativeButton("Later") { _, _ ->
-                        // Start service anyway but warn user
-                        Toast.makeText(this,
-                            "Warning: App may not work reliably in background without battery optimization exemption",
-                            Toast.LENGTH_LONG).show()
-                        startBluetoothService()
-                    }
-                    .setCancelable(false)
-                    .show()
-            } else {
-                // Already exempted, start service directly
-                startBluetoothService()
-            }
-        } else {
-            // Pre-Marshmallow, no battery optimization
-            startBluetoothService()
-        }
-    }
-
     private fun startBluetoothService() {
-        // Check full-screen intent permission (Android 14+)
-        // Without this, alert screen may not show (only heads-up notification)
-        checkFullScreenIntentPermission()
+        // Android 6+: check "draw over other apps" permission
+        // Required on Android 15 to launch alert screen from background
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Log.w("MainActivity", "Overlay permission not granted - requesting")
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Cannot open overlay settings: ${e.message}")
+            }
+        }
 
         val intent = Intent(this, BluetoothService::class.java)
         startForegroundService(intent)
         bindService(intent, serviceConnection, BIND_AUTO_CREATE)
-    }
-
-    /**
-     * On Android 14+, USE_FULL_SCREEN_INTENT may be revoked by the user.
-     * Prompt them to enable it for reliable alert screen display.
-     */
-    private fun checkFullScreenIntentPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            if (!notificationManager.canUseFullScreenIntent()) {
-                Log.w("MainActivity", "Full-screen intent permission not granted")
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Cannot open full-screen intent settings: ${e.message}")
-                }
-            }
-        }
     }
 
     private fun showPermissionDeniedDialog() {
@@ -465,22 +403,14 @@ class MainActivity : AppCompatActivity() {
     private fun quitApp() {
         Log.d("MainActivity", "Quitting app - stopping service and exiting")
 
-        // Stop any active alerts
-        alertCoordinator.stopAllAlerts()
-
-        // Stop scanning
-        bluetoothService?.stopScanning()
-        bluetoothService?.disconnect()
+        // Tell service to fully quit (stops scanning, alerts, and calls stopSelf)
+        bluetoothService?.quit()
 
         // Unbind from service
         if (isBound) {
             unbindService(serviceConnection)
             isBound = false
         }
-
-        // Stop the foreground service
-        val intent = Intent(this, BluetoothService::class.java)
-        stopService(intent)
 
         // Finish this activity
         finishAffinity()

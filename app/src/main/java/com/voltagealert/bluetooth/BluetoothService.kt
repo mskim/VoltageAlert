@@ -24,6 +24,7 @@ import com.voltagealert.models.VoltageLevel
 import com.voltagealert.models.VoltageReading
 import com.voltagealert.testing.MockBluetoothDevice
 import com.voltagealert.ui.MainActivity
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -63,6 +64,7 @@ class BluetoothService : Service() {
     private lateinit var alertCoordinator: AlertCoordinator
     private lateinit var logManager: VoltageLogManager
     private var lastAlertedVoltage: VoltageLevel? = null
+    private var isQuitting = false
 
     // Debug log buffer: collects BLE scan record data for saving to file
     private val debugLogBuffer = mutableListOf<String>()
@@ -133,7 +135,8 @@ class BluetoothService : Service() {
         }
 
         // START_STICKY ensures service restarts if killed by system
-        return START_STICKY
+        // But if user chose to quit, don't restart
+        return if (isQuitting) START_NOT_STICKY else START_STICKY
     }
 
     /**
@@ -313,6 +316,25 @@ class BluetoothService : Service() {
             _latestReading.value = null
             _errorCount.value = 0
         }
+    }
+
+    /**
+     * Fully quit the service. Stops scanning, disconnects, and calls stopSelf()
+     * so the service is not restarted by the system.
+     */
+    fun quit() {
+        Log.d(TAG, "Service quit requested - stopping completely")
+        isQuitting = true
+        stopScanning()
+        alertCoordinator.stopAllAlerts()
+        readingTimeoutJob?.cancel()
+        broadcastJob?.cancel()
+        serviceScope.launch {
+            cleanupBleManager()
+            stopMockMode()
+        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     /**
@@ -536,16 +558,39 @@ class BluetoothService : Service() {
         }
     }
 
+    /**
+     * Called when the user swipes away the app from recent apps.
+     * Stop everything — treat it the same as quit.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.d(TAG, "App removed from recents - stopping service")
+        quit()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+
+        // Stop scanning
+        stopScanning()
+
+        // Cancel all coroutine jobs
         readingTimeoutJob?.cancel()
         broadcastJob?.cancel()
         debugLogJob?.cancel()
         scanCacheFlushJob?.cancel()
         autoRescanJob?.cancel()
-        serviceScope.launch {
-            cleanupBleManager()
+
+        // Clean up BLE synchronously before cancelling scope
+        try {
+            bleManager?.close()
+            bleManager = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing BLE manager: ${e.message}")
         }
+
+        // Cancel the entire coroutine scope — stops ALL background work
+        serviceScope.cancel()
 
         // Release wake lock
         try {
@@ -559,7 +604,7 @@ class BluetoothService : Service() {
             Log.e(TAG, "Error releasing wake lock: ${e.message}")
         }
 
-        Log.d(TAG, "Service destroyed")
+        Log.d(TAG, "Service destroyed - all background work stopped")
     }
 
     /**
